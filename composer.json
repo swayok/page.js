@@ -1,0 +1,15 @@
+{
+    "name": "swayok/page.js",
+    "type": "library",
+    "description": "Tiny client-side router",
+    "keywords": [
+        "javascript",
+        "router"
+    ],
+    "authors": [
+        {
+            "name": "Alexander Filippov"
+        }
+    ],
+    "license": "MIT"
+}
