@@ -186,18 +186,36 @@
   };
 
   /**
+   * Failsafe way to declare routes. Note: You can pass many fn
+   * @param {string} path
+   * @param {Function=} fn
+   */
+  page.route = function (path, fn) {
+      if (typeof path !== 'string') {
+          console.error('1st argument passed to page.route() must be a string. Use \'*\' if you want to apply callbacks to all routes');
+          return;
+      }
+      if (typeof fn !== 'function') {
+          console.error('2nd argument passed to page.route() for route ' + path + ' is not a funciton');
+          return;
+      }
+      page.apply(window, arguments); //< call page(path, fn, fn, ...)
+  };
+
+  /**
    * Show `path` with optional `state` object.
    *
    * @param {string} path
    * @param {Object=} state
    * @param {boolean=} dispatch
    * @param {boolean=} push
+   * @param {Object=} customData
    * @return {!Context}
    * @api public
    */
 
-  page.show = function(path, state, dispatch, push) {
-    var ctx = new Context(path, state);
+  page.show = function(path, state, dispatch, push, customData) {
+    var ctx = new Context(path, state, customData);
     page.current = ctx.path;
     if (false !== dispatch) page.dispatch(ctx);
     if (false !== ctx.handled && false !== push) ctx.pushState();
@@ -230,6 +248,14 @@
     }
   };
 
+  /**
+   * Reload current page
+   *
+   * @api public
+   */
+  page.reload = function () {
+      page.show(page.current, null, true, false, {is_reload: true});
+  };
 
   /**
    * Register route to redirect from one path to other
@@ -264,13 +290,14 @@
    * @param {Object=} state
    * @param {boolean=} init
    * @param {boolean=} dispatch
+   * @param {Object=} customData
    * @return {!Context}
    * @api public
    */
 
 
-  page.replace = function(path, state, init, dispatch) {
-    var ctx = new Context(path, state);
+  page.replace = function(path, state, init, dispatch, customData) {
+    var ctx = new Context(path, state, customData);
     page.current = ctx.path;
     ctx.init = init;
     ctx.save(); // save before dispatching, which may redirect
@@ -375,10 +402,11 @@
    * @constructor
    * @param {string} path
    * @param {Object=} state
+   * @param {Object=} customData
    * @api public
    */
 
-  function Context(path, state) {
+  function Context(path, state, customData) {
     if ('/' === path[0] && 0 !== path.indexOf(base)) path = base + (hashbang ? '#!' : '') + path;
     var i = path.indexOf('?');
 
@@ -392,6 +420,7 @@
     this.querystring = ~i ? decodeURLEncodedURIComponent(path.slice(i + 1)) : '';
     this.pathname = decodeURLEncodedURIComponent(~i ? path.slice(0, i) : path);
     this.params = {};
+    this.customData = customData || {};
 
     // fragment
     this.hash = '';
@@ -530,9 +559,9 @@
       if (!loaded) return;
       if (e.state) {
         var path = e.state.path;
-        page.replace(path, e.state);
+        page.replace(path, e.state, undefined, undefined, {isHistory: true});
       } else {
-        page.show(location.pathname + location.hash, undefined, undefined, false);
+        page.show(location.pathname + location.hash, undefined, undefined, false, {isHistory: true});
       }
     };
   })();
@@ -599,7 +628,7 @@
     if (base && orig === path) return;
 
     e.preventDefault();
-    page.show(orig);
+    page.show(orig, undefined, undefined, undefined, {is_click: true, target: this.activeElement || e.target});
   }
 
   /**
