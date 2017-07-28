@@ -1,4 +1,4 @@
-!function(e){if("object"==typeof exports&&"undefined"!=typeof module)module.exports=e();else if("function"==typeof define&&define.amd)define([],e);else{var f;"undefined"!=typeof window?f=window:"undefined"!=typeof global?f=global:"undefined"!=typeof self&&(f=self),f.page=e()}}(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
+!function(e){if("object"===typeof exports&&"undefined"!==typeof module)module.exports=e();else if("function"===typeof define&&define.amd)define([],e);else{var f;"undefined"!==typeof window?f=window:"undefined"!==typeof global?f=global:"undefined"!==typeof self&&(f=self),f.page=e()}}(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require==="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require==="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 (function (process){
   /* globals require, module */
 
@@ -559,9 +559,9 @@
       if (!loaded) return;
       if (e.state) {
         var path = e.state.path;
-        page.replace(path, e.state, undefined, undefined, {isHistory: true});
+        page.replace(path, e.state, undefined, undefined, {is_history: true});
       } else {
-        page.show(location.pathname + location.hash, undefined, undefined, false, {isHistory: true});
+        page.show(location.pathname + location.hash, undefined, undefined, false, {is_history: true});
       }
     };
   })();
@@ -742,16 +742,16 @@ process.chdir = function (dir) {
 };
 
 },{}],3:[function(require,module,exports){
-var isarray = require('isarray')
+var isarray = require('isarray');
 
 /**
  * Expose `pathToRegexp`.
  */
-module.exports = pathToRegexp
-module.exports.parse = parse
-module.exports.compile = compile
-module.exports.tokensToFunction = tokensToFunction
-module.exports.tokensToRegExp = tokensToRegExp
+module.exports = pathToRegexp;
+module.exports.parse = parse;
+module.exports.compile = compile;
+module.exports.tokensToFunction = tokensToFunction;
+module.exports.tokensToRegExp = tokensToRegExp;
 
 /**
  * The main path matching regexp utility.
@@ -769,7 +769,7 @@ var PATH_REGEXP = new RegExp([
   // "/route(\\d+)"  => [undefined, undefined, undefined, "\d+", undefined, undefined]
   // "/*"            => ["/", undefined, undefined, undefined, undefined, "*"]
   '([\\/.])?(?:(?:\\:(\\w+)(?:\\(((?:\\\\.|[^()])+)\\))?|\\(((?:\\\\.|[^()])+)\\))([+*?])?|(\\*))'
-].join('|'), 'g')
+].join('|'), 'g');
 
 /**
  * Parse a string for the raw tokens.
@@ -778,42 +778,42 @@ var PATH_REGEXP = new RegExp([
  * @return {Array}
  */
 function parse (str) {
-  var tokens = []
-  var key = 0
-  var index = 0
-  var path = ''
-  var res
+  var tokens = [];
+  var key = 0;
+  var index = 0;
+  var path = '';
+  var res;
 
-  while ((res = PATH_REGEXP.exec(str)) != null) {
-    var m = res[0]
-    var escaped = res[1]
-    var offset = res.index
-    path += str.slice(index, offset)
-    index = offset + m.length
+  while ((res = PATH_REGEXP.exec(str)) !== null) {
+    var m = res[0];
+    var escaped = res[1];
+    var offset = res.index;
+    path += str.slice(index, offset);
+    index = offset + m.length;
 
     // Ignore already escaped sequences.
     if (escaped) {
-      path += escaped[1]
-      continue
+      path += escaped[1];
+      continue;
     }
 
     // Push the current path onto the tokens.
     if (path) {
-      tokens.push(path)
-      path = ''
+      tokens.push(path);
+      path = '';
     }
 
-    var prefix = res[2]
-    var name = res[3]
-    var capture = res[4]
-    var group = res[5]
-    var suffix = res[6]
-    var asterisk = res[7]
+    var prefix = res[2];
+    var name = res[3];
+    var capture = res[4];
+    var group = res[5];
+    var suffix = res[6];
+    var asterisk = res[7];
 
-    var repeat = suffix === '+' || suffix === '*'
-    var optional = suffix === '?' || suffix === '*'
-    var delimiter = prefix || '/'
-    var pattern = capture || group || (asterisk ? '.*' : '[^' + delimiter + ']+?')
+    var repeat = suffix === '+' || suffix === '*';
+    var optional = suffix === '?' || suffix === '*';
+    var delimiter = prefix || '/';
+    var pattern = capture || group || (asterisk ? '.*' : '[^' + delimiter + ']+?');
 
     tokens.push({
       name: name || key++,
@@ -822,20 +822,20 @@ function parse (str) {
       optional: optional,
       repeat: repeat,
       pattern: escapeGroup(pattern)
-    })
+    });
   }
 
   // Match any characters still remaining.
   if (index < str.length) {
-    path += str.substr(index)
+    path += str.substr(index);
   }
 
   // If the path exists, push it onto the end.
   if (path) {
-    tokens.push(path)
+    tokens.push(path);
   }
 
-  return tokens
+  return tokens;
 }
 
 /**
@@ -845,7 +845,7 @@ function parse (str) {
  * @return {Function}
  */
 function compile (str) {
-  return tokensToFunction(parse(str))
+  return tokensToFunction(parse(str));
 }
 
 /**
@@ -853,75 +853,75 @@ function compile (str) {
  */
 function tokensToFunction (tokens) {
   // Compile all the tokens into regexps.
-  var matches = new Array(tokens.length)
+  var matches = new Array(tokens.length);
 
   // Compile all the patterns before compilation.
   for (var i = 0; i < tokens.length; i++) {
     if (typeof tokens[i] === 'object') {
-      matches[i] = new RegExp('^' + tokens[i].pattern + '$')
+      matches[i] = new RegExp('^' + tokens[i].pattern + '$');
     }
   }
 
   return function (obj) {
-    var path = ''
-    var data = obj || {}
+    var path = '';
+    var data = obj || {};
 
     for (var i = 0; i < tokens.length; i++) {
-      var token = tokens[i]
+      var token = tokens[i];
 
       if (typeof token === 'string') {
-        path += token
+        path += token;
 
-        continue
+        continue;
       }
 
-      var value = data[token.name]
-      var segment
+      var value = data[token.name];
+      var segment;
 
-      if (value == null) {
+      if (value === null) {
         if (token.optional) {
-          continue
+          continue;
         } else {
-          throw new TypeError('Expected "' + token.name + '" to be defined')
+          throw new TypeError('Expected "' + token.name + '" to be defined');
         }
       }
 
       if (isarray(value)) {
         if (!token.repeat) {
-          throw new TypeError('Expected "' + token.name + '" to not repeat, but received "' + value + '"')
+          throw new TypeError('Expected "' + token.name + '" to not repeat, but received "' + value + '"');
         }
 
         if (value.length === 0) {
           if (token.optional) {
-            continue
+            continue;
           } else {
-            throw new TypeError('Expected "' + token.name + '" to not be empty')
+            throw new TypeError('Expected "' + token.name + '" to not be empty');
           }
         }
 
         for (var j = 0; j < value.length; j++) {
-          segment = encodeURIComponent(value[j])
+          segment = encodeURIComponent(value[j]);
 
           if (!matches[i].test(segment)) {
-            throw new TypeError('Expected all "' + token.name + '" to match "' + token.pattern + '", but received "' + segment + '"')
+            throw new TypeError('Expected all "' + token.name + '" to match "' + token.pattern + '", but received "' + segment + '"');
           }
 
-          path += (j === 0 ? token.prefix : token.delimiter) + segment
+          path += (j === 0 ? token.prefix : token.delimiter) + segment;
         }
 
-        continue
+        continue;
       }
 
-      segment = encodeURIComponent(value)
+      segment = encodeURIComponent(value);
 
       if (!matches[i].test(segment)) {
-        throw new TypeError('Expected "' + token.name + '" to match "' + token.pattern + '", but received "' + segment + '"')
+        throw new TypeError('Expected "' + token.name + '" to match "' + token.pattern + '", but received "' + segment + '"');
       }
 
-      path += token.prefix + segment
+      path += token.prefix + segment;
     }
 
-    return path
+    return path;
   }
 }
 
@@ -932,7 +932,7 @@ function tokensToFunction (tokens) {
  * @return {String}
  */
 function escapeString (str) {
-  return str.replace(/([.+*?=^!:${}()[\]|\/])/g, '\\$1')
+  return str.replace(/([.+*?=^!:${}()[\]|\/])/g, '\\$1');
 }
 
 /**
@@ -942,7 +942,7 @@ function escapeString (str) {
  * @return {String}
  */
 function escapeGroup (group) {
-  return group.replace(/([=!:$\/()])/g, '\\$1')
+  return group.replace(/([=!:$\/()])/g, '\\$1');
 }
 
 /**
@@ -953,8 +953,8 @@ function escapeGroup (group) {
  * @return {RegExp}
  */
 function attachKeys (re, keys) {
-  re.keys = keys
-  return re
+  re.keys = keys;
+  return re;
 }
 
 /**
@@ -964,7 +964,7 @@ function attachKeys (re, keys) {
  * @return {String}
  */
 function flags (options) {
-  return options.sensitive ? '' : 'i'
+  return options.sensitive ? '' : 'i';
 }
 
 /**
@@ -976,7 +976,7 @@ function flags (options) {
  */
 function regexpToRegexp (path, keys) {
   // Use a negative lookahead to match only capturing groups.
-  var groups = path.source.match(/\((?!\?)/g)
+  var groups = path.source.match(/\((?!\?)/g);
 
   if (groups) {
     for (var i = 0; i < groups.length; i++) {
@@ -987,11 +987,11 @@ function regexpToRegexp (path, keys) {
         optional: false,
         repeat: false,
         pattern: null
-      })
+      });
     }
   }
 
-  return attachKeys(path, keys)
+  return attachKeys(path, keys);
 }
 
 /**
@@ -1003,15 +1003,15 @@ function regexpToRegexp (path, keys) {
  * @return {RegExp}
  */
 function arrayToRegexp (path, keys, options) {
-  var parts = []
+  var parts = [];
 
   for (var i = 0; i < path.length; i++) {
-    parts.push(pathToRegexp(path[i], keys, options).source)
+    parts.push(pathToRegexp(path[i], keys, options).source);
   }
 
-  var regexp = new RegExp('(?:' + parts.join('|') + ')', flags(options))
+  var regexp = new RegExp('(?:' + parts.join('|') + ')', flags(options));
 
-  return attachKeys(regexp, keys)
+  return attachKeys(regexp, keys);
 }
 
 /**
@@ -1023,61 +1023,60 @@ function arrayToRegexp (path, keys, options) {
  * @return {RegExp}
  */
 function stringToRegexp (path, keys, options) {
-  var tokens = parse(path)
-  var re = tokensToRegExp(tokens, options)
+  var tokens = parse(path);
+  var re = tokensToRegExp(tokens, options);
 
   // Attach keys back to the regexp.
   for (var i = 0; i < tokens.length; i++) {
     if (typeof tokens[i] !== 'string') {
-      keys.push(tokens[i])
+      keys.push(tokens[i]);
     }
   }
 
-  return attachKeys(re, keys)
+  return attachKeys(re, keys);
 }
 
 /**
  * Expose a function for taking tokens and returning a RegExp.
  *
  * @param  {Array}  tokens
- * @param  {Array}  keys
  * @param  {Object} options
  * @return {RegExp}
  */
 function tokensToRegExp (tokens, options) {
-  options = options || {}
+  options = options || {};
 
-  var strict = options.strict
-  var end = options.end !== false
-  var route = ''
-  var lastToken = tokens[tokens.length - 1]
-  var endsWithSlash = typeof lastToken === 'string' && /\/$/.test(lastToken)
+  var strict = options.strict;
+  var end = options.end !== false;
+  var route = '';
+  var lastToken = tokens[tokens.length - 1];
+  var endsWithSlash = typeof lastToken === 'string' && /\/$/.test(lastToken);
 
   // Iterate over the tokens and create our regexp string.
   for (var i = 0; i < tokens.length; i++) {
-    var token = tokens[i]
+    var token = tokens[i];
 
     if (typeof token === 'string') {
-      route += escapeString(token)
+      route += escapeString(token);
     } else {
-      var prefix = escapeString(token.prefix)
-      var capture = token.pattern
+      var prefix = escapeString(token.prefix);
+      var capture = token.pattern;
 
       if (token.repeat) {
-        capture += '(?:' + prefix + capture + ')*'
+        capture += '(?:' + prefix + capture + ')*';
       }
 
       if (token.optional) {
         if (prefix) {
-          capture = '(?:' + prefix + '(' + capture + '))?'
+          capture = '(?:' + prefix + '(' + capture + '))?';
         } else {
-          capture = '(' + capture + ')?'
+          capture = '(' + capture + ')?';
         }
       } else {
-        capture = prefix + '(' + capture + ')'
+        capture = prefix + '(' + capture + ')';
       }
 
-      route += capture
+      route += capture;
     }
   }
 
@@ -1086,18 +1085,18 @@ function tokensToRegExp (tokens, options) {
   // is valid at the end of a path match, not in the middle. This is important
   // in non-ending mode, where "/test/" shouldn't match "/test//route".
   if (!strict) {
-    route = (endsWithSlash ? route.slice(0, -2) : route) + '(?:\\/(?=$))?'
+    route = (endsWithSlash ? route.slice(0, -2) : route) + '(?:\\/(?=$))?';
   }
 
   if (end) {
-    route += '$'
+    route += '$';
   } else {
     // In non-ending mode, we need the capturing groups to match as much as
     // possible by using a positive lookahead to the end or next path segment.
-    route += strict && endsWithSlash ? '' : '(?=\\/|$)'
+    route += strict && endsWithSlash ? '' : '(?=\\/|$)';
   }
 
-  return new RegExp('^' + route, flags(options))
+  return new RegExp('^' + route, flags(options));
 }
 
 /**
@@ -1113,29 +1112,29 @@ function tokensToRegExp (tokens, options) {
  * @return {RegExp}
  */
 function pathToRegexp (path, keys, options) {
-  keys = keys || []
+  keys = keys || [];
 
   if (!isarray(keys)) {
-    options = keys
-    keys = []
+    options = keys;
+    keys = [];
   } else if (!options) {
-    options = {}
+    options = {};
   }
 
   if (path instanceof RegExp) {
-    return regexpToRegexp(path, keys, options)
+    return regexpToRegexp(path, keys);
   }
 
   if (isarray(path)) {
-    return arrayToRegexp(path, keys, options)
+    return arrayToRegexp(path, keys, options);
   }
 
-  return stringToRegexp(path, keys, options)
+  return stringToRegexp(path, keys, options);
 }
 
 },{"isarray":4}],4:[function(require,module,exports){
 module.exports = Array.isArray || function (arr) {
-  return Object.prototype.toString.call(arr) == '[object Array]';
+  return Object.prototype.toString.call(arr) === '[object Array]';
 };
 
 },{}]},{},[1])(1)

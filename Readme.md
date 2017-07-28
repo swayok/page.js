@@ -15,6 +15,16 @@ page('/user/:user/album/sort', sort)
 page('*', notfound)
 page()
 ```
+Or failsafe variant for route declaration:
+```js
+page.route('/', index)
+page.route('/user/:user', show)
+page.route('/user/:user/edit', edit)
+page.route('/user/:user/album', album)
+page.route('/user/:user/album/sort', sort)
+page.route('*', notfound)
+```
+This one will not allow you to pass anything except string as 1st argument and function as 2nd argument
 
 ## Installation
 
@@ -56,16 +66,18 @@ page()
 
 ## API
 
-### page(path, callback[, callback ...])
+### page.route(path, callback[, callback ...])
 
+  Failsafe variant of page(path, callback[, callback ...])
+  
   Defines a route mapping `path` to the given `callback(s)`.
   Each callback is invoked with two arguments, [context](#context) and `next`. Much like Express invoking next will call the next registered callback with the given path.
 
 ```js
-page('/', user.list)
-page('/user/:id', user.load, user.show)
-page('/user/:id/edit', user.load, user.edit)
-page('*', notfound)
+page.route('/', user.list)
+page.route('/user/:id', user.load, user.show)
+page.route('/user/:id/edit', user.load, user.edit)
+page.route('*', notfound)
 ```
 
   Under certain conditions, links will be disregarded
@@ -121,6 +133,10 @@ page('/default');
 ### page.show(path)
 
   Identical to `page(path)` above.
+  
+### page.reload()
+
+  Reload current url
 
 ### page([options])
 
@@ -218,6 +234,18 @@ Equivalent to `page.exit('*', callback)`.
 #### Context#title
 
   The `pushState` title.
+  
+#### Context#customData
+
+  Some specific data for this context. Allows you to provide better awareness 
+  about this context.
+  
+  customData object can be passed via page.show() and page.replace() as 5th argument 
+  
+  It is used in page.reload() and in default onclick() and onpopstate() event handlers:
+  - page.reload() provides {is_reload: true} customData
+  - onclick() provides {is_click: true, target: DOM Element} customData
+  - onpopstate() provides {is_history: true} customData
 
 ## Routing
 

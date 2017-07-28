@@ -1,3 +1,17 @@
+1.7.2 / 2017-07-27
+==================
+
+* added page.route(url, ...fn) as failsafe version of page(url, fn) ([@swayok])
+* added page.reload() ([@swayok])
+* added new argument to page.show() and page.replace() and Context(): customData. 
+It used to provide some specific info for context ([@swayok])
+* Added customData = {is_click: true, target: DOM Element} to page.show() in onclick() ([@swayok])
+* Added customData = {is_history: true} to page.show() and page.replace() in onpopstate() ([@swayok])
+* Added customData = {is_reload: true} to page.show() in reload() ([@swayok])
+* fixed missing ";" and not strict equations ([@swayok])
+
+[@swayok]: https://github.com/swayok
+
 1.7.1 / 2016-03-17
 ==================
 
