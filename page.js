@@ -213,16 +213,28 @@
    * @return {!Context}
    * @api public
    */
-
   page.show = function(path, state, dispatch, push, customData) {
     var ctx = new Context(path, state, customData);
+    page.processContext(ctx, dispatch, push);
+    return ctx;
+  };
+
+  /**
+   * Execute context.
+   *
+   * @param {Object=} ctx
+   * @param {boolean=} dispatch
+   * @param {boolean=} push
+   * @return {!Context}
+   * @api public
+   */
+  page.processContext = function (ctx, dispatch, push) {
     page.current = ctx.path;
     if (false !== dispatch) page.dispatch(ctx);
-    if (push === false) {
-      ctx.push = false;
-    }
+      if (push === false) {
+        ctx.push = false;
+      }
     if (false !== ctx.handled && false !== ctx.push) ctx.pushState();
-    return ctx;
   };
 
   /**
@@ -297,8 +309,6 @@
    * @return {!Context}
    * @api public
    */
-
-
   page.replace = function(path, state, init, dispatch, customData) {
     var ctx = new Context(path, state, customData);
     page.current = ctx.path;
@@ -307,6 +317,27 @@
     ctx.save(); // save before dispatching, which may redirect
     if (false !== dispatch) page.dispatch(ctx);
     return ctx;
+  };
+
+  /**
+   * Restore context.
+   *
+   * @param {Object=} context
+   * @param {boolean=} dispatch
+   * @param {boolean=} push
+   * @api public
+   */
+  page.restoreContext = function (context, dispatch, push) {
+    if (context.customData) {
+      delete context.customData.is_history;
+      delete context.customData.is_reload;
+      delete context.customData.is_click;
+      delete context.customData.target;
+      delete context.customData.is_state_save;
+    }
+    context.is_restore = true;
+    page.processContext(context, dispatch, push);
+    delete context.is_restore;
   };
 
   /**
