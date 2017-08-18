@@ -1,3 +1,10 @@
+1.7.3 / 2017-07-27
+==================
+
+* added possibility to disable URL change (push state) during Context handling using 
+Context.push = false ([@swayok])
+* updated Readme.md ([@swayok])
+
 1.7.2 / 2017-07-27
 ==================
 

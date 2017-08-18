@@ -421,6 +421,7 @@
     this.pathname = decodeURLEncodedURIComponent(~i ? path.slice(0, i) : path);
     this.params = {};
     this.customData = customData || {};
+    this.push = null;
 
     // fragment
     this.hash = '';

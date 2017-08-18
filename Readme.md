@@ -130,9 +130,39 @@ page('/default', function(){
 page('/default');
 ```
 
-### page.show(path)
+### page.show(path, state, dispatch, push, customData)
 
-  Identical to `page(path)` above.
+  Navigate to `path`.
+  Returns: `Context`
+  Arguments:
+  - `path` - URL
+  - `state` - history state object
+  - `dispatch` - boolean; Default: `true`; When `false` router will not run any handlers for this url 
+  but will create instance of `Context`
+  - `push` - boolean; Default: true; When `false` router will not change URL in browser's address line
+  - `customData` - object; some specific data to store into `Context`. For more info see `Context#customData` 
+  
+### page.replace(path, state, init, dispatch, customData)
+
+  Navigate to `path` replacing current URL in browser's history.
+  Returns: `Context`
+  Arguments:
+  - `path` - URL
+  - `state` - history state object
+  - `init` - boolean; I'm not sure but possibly it is just a flag that indicates initial `Context` 
+  dispatched in `page.start()` ([@swayok])
+  - `dispatch` - boolean; Default: `true`; When `false` router will not run any handlers for this url 
+  but will create instance of `Context`
+  - `customData` - object; some specific data to store into `Context`. For more info see `Context#customData` 
+  
+[@swayok]: https://github.com/swayok
+
+### page.back(path, state)
+
+  Navigate to previous page in history or to `path` when history is empty.
+  Arguments:
+  - `path` - default URL to navigate to when history is empty. Default: base URL
+  - `state` - history state object
   
 ### page.reload()
 
@@ -234,6 +264,17 @@ Equivalent to `page.exit('*', callback)`.
 #### Context#title
 
   The `pushState` title.
+  
+#### Context#push
+
+  Indicates if router should change current URL. Default: null
+  
+  Example: you handled request that shows a modal dialog but you do not want to change 
+  page address in browser. To do this you just need to set `contxt.push = false;` in 
+  your request handler.
+  
+  Note: `contxt.push = true;` will not force URL change in cases when `push` argument 
+  is `false` in `page.show()` or `page.replace()` 
   
 #### Context#customData
 
