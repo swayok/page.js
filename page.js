@@ -218,7 +218,10 @@
     var ctx = new Context(path, state, customData);
     page.current = ctx.path;
     if (false !== dispatch) page.dispatch(ctx);
-    if (false !== ctx.handled && false !== ctx.push && false !== push) ctx.pushState();
+    if (push === false) {
+      ctx.push = false;
+    }
+    if (false !== ctx.handled && false !== ctx.push) ctx.pushState();
     return ctx;
   };
 
