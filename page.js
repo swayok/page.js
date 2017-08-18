@@ -303,6 +303,7 @@
     var ctx = new Context(path, state, customData);
     page.current = ctx.path;
     ctx.init = init;
+    ctx.push = false; //< it does not change url
     ctx.save(); // save before dispatching, which may redirect
     if (false !== dispatch) page.dispatch(ctx);
     return ctx;
