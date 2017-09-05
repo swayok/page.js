@@ -1,838 +1,731 @@
-!function(e){if("object"===typeof exports&&"undefined"!==typeof module)module.exports=e();else if("function"===typeof define&&define.amd)define([],e);else{var f;"undefined"!==typeof window?f=window:"undefined"!==typeof global?f=global:"undefined"!==typeof self&&(f=self),f.page=e()}}(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require==="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require==="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
-(function (process){
-    /* globals require, module */
+(function(global) {
 
-    'use strict';
+'use strict';
 
-    /**
-     * Module dependencies.
-     */
-    var pathtoRegexp = require('path-to-regexp');
+global.page = page;
 
-    /**
-     * Module exports.
-     */
-    module.exports = page;
+page.isSameOrigin = isSameOrigin;
+page.Context = Context;
+page.Route = Route;
+page.pathToRegexp = pathToRegexp;
 
-    /**
-     * Detect click event
-     */
-    var clickEvent = ('undefined' !== typeof document) && document.ontouchstart ? 'touchstart' : 'click';
+/**
+ * Detect click event
+ */
+var clickEvent = ('undefined' !== typeof document) && document.ontouchstart ? 'touchstart' : 'click';
 
-    /**
-     * To work properly with the URL
-     * history.location generated polyfill in https://github.com/devote/HTML5-History-API
-     */
-    var location = ('undefined' !== typeof window) && (window.history.location || window.location);
+/**
+ * To work properly with the URL
+ * history.location generated polyfill in https://github.com/devote/HTML5-History-API
+ */
+var location = ('undefined' !== typeof window) && (window.history.location || window.location);
 
-    /**
-     * Decode URL components (query string, pathname, hash).
-     * Accommodates both regular percent encoding and x-www-form-urlencoded format.
-     */
-    var decodeURLComponents = true;
+/**
+ * Decode URL components (query string, pathname, hash).
+ * Accommodates both regular percent encoding and x-www-form-urlencoded format.
+ */
+var decodeURLComponents = true;
 
-    /**
-     * Decode URL query string into object for every request context
-     * @type {boolean}
-     */
-    var decodeURLQuery = false;
+/**
+ * Decode URL query string into object for every request context
+ * @type {boolean}
+ */
+var decodeURLQuery = false;
 
-    /**
-     * Base path.
-     */
+/**
+ * Base path.
+ */
 
-    var base = '';
+var base = '';
 
-    /**
-     * Running flag.
-     */
+/**
+ * Running flag.
+ */
 
-    var running;
+var running;
 
-    /**
-     * Previous context, for capturing
-     * page exit events.
-     */
-    var prevRequestContext;
+/**
+ * Previous context, for capturing
+ * page exit events.
+ */
+var prevRequestContext;
 
-    /**
-     * Current context
-     */
-    var currentRequestContext;
+/**
+ * Current context
+ */
+var currentRequestContext;
 
-    /**
-     * Shortcut for `page.start(options)`.
-     * @param {!Object} options
-     * @api public
-     */
+/**
+ * Shortcut for `page.start(options)`.
+ * @param {!Object} options
+ * @api public
+ */
 
-    function page(options) {
-        page.start(options);
+function page(options) {
+    page.start(options);
+}
+
+/**
+ * Callback functions.
+ */
+
+page.callbacks = [];
+page.exits = [];
+
+/**
+ * Number of pages navigated to.
+ * @type {number}
+ *
+ *     page.len == 0;
+ *     page.show('/login');
+ *     page.len == 1;
+ */
+page.len = 0;
+
+/**
+ * Returns current context
+ * @return {Object}
+ */
+page.currentRequestContext = function () {
+    return currentRequestContext;
+};
+
+/**
+ * Returns current URL without part provided via page.base()
+ * @return {string}
+ */
+page.currentUrlWithoutBase = function () {
+    return page.currentRequestContext().path;
+};
+
+/**
+ * Returns current URL without part provided via page.base()
+ * @return {string}
+ */
+page.currentUrl = function () {
+    return page.currentRequestContext().canonicalPath;
+};
+
+/**
+ * Returns previous context
+ * @return {Object}
+ */
+page.previousRequestContext = function () {
+    return prevRequestContext;
+};
+
+/**
+ * Returns current URL without part provided via page.base()
+ * @return {string}
+ */
+page.previousUrlWithoutBase = function () {
+    return page.previousRequestContext().path;
+};
+
+/**
+ * Returns current URL without part provided via page.base()
+ * @return {string}
+ */
+page.previousUrl = function () {
+    return page.previousRequestContext().canonicalPath;
+};
+
+/**
+ * Get or set basepath to `path`.
+ *
+ * @param {string} path
+ * @api public
+ */
+
+page.base = function (path) {
+    if (0 === arguments.length) {
+        return base;
     }
+    base = path;
+};
 
-    /**
-     * Callback functions.
-     */
+/**
+ * Bind with the given `options`.
+ *
+ * Options:
+ *
+ *    - `click` - bool, bind to click events [true]
+ *    - `popstate` - bool, bind to popstate [true]
+ *    - `dispatch` - bool, perform initial dispatch [true]
+ *    - `decodeURLComponents` - bool, remove URL encoding from URL components [true]
+ *    - `decodeURLQuery` - bool, convert query string to object for each request context [false]
+ *
+ * @param {Object} options
+ * @api public
+ */
 
-    page.callbacks = [];
-    page.exits = [];
+page.start = function (options) {
+    options = options || {};
+    if (running) {
+        return;
+    }
+    running = true;
+    if (options.decodeURLComponents === false) {
+        decodeURLComponents = false;
+    }
+    if (options.decodeURLQuery) {
+        decodeURLQuery = true;
+    }
+    if (options.popstate !== false) {
+        window.addEventListener('popstate', onpopstate, false);
+    }
+    if (options.click !== false) {
+        document.addEventListener(clickEvent, onclick, false);
+    }
+    page.replace(location.pathname + location.search + location.hash, undefined, options.dispatch !== false, {is_first: true});
+};
 
-    /**
-     * Number of pages navigated to.
-     * @type {number}
-     *
-     *     page.len == 0;
-     *     page.show('/login');
-     *     page.len == 1;
-     */
+/**
+ * Unbind click and popstate event handlers.
+ *
+ * @api public
+ */
+page.stop = function () {
+    if (!running) {
+        return;
+    }
+    currentRequestContext = null;
+    prevRequestContext = null;
     page.len = 0;
+    running = false;
+    document.removeEventListener(clickEvent, onclick, false);
+    window.removeEventListener('popstate', onpopstate, false);
+};
 
-    /**
-     * Returns current context
-     * @return {Object}
-     */
-    page.currentRequestContext = function () {
-        return currentRequestContext;
-    };
-
-    /**
-     * Returns current URL without part provided via page.base()
-     * @return {string}
-     */
-    page.currentUrlWithoutBase = function () {
-        return page.currentRequestContext().path;
-    };
-
-    /**
-     * Returns current URL without part provided via page.base()
-     * @return {string}
-     */
-    page.currentUrl = function () {
-        return page.currentRequestContext().canonicalPath;
-    };
-
-    /**
-     * Returns previous context
-     * @return {Object}
-     */
-    page.previousRequestContext = function () {
-        return prevRequestContext;
-    };
-
-    /**
-     * Returns current URL without part provided via page.base()
-     * @return {string}
-     */
-    page.previousUrlWithoutBase = function () {
-        return page.previousRequestContext().path;
-    };
-
-    /**
-     * Returns current URL without part provided via page.base()
-     * @return {string}
-     */
-    page.previousUrl = function () {
-        return page.previousRequestContext().canonicalPath;
-    };
-
-    /**
-     * Get or set basepath to `path`.
-     *
-     * @param {string} path
-     * @api public
-     */
-
-    page.base = function (path) {
-        if (0 === arguments.length) {
-            return base;
-        }
-        base = path;
-    };
-
-    /**
-     * Bind with the given `options`.
-     *
-     * Options:
-     *
-     *    - `click` - bool, bind to click events [true]
-     *    - `popstate` - bool, bind to popstate [true]
-     *    - `dispatch` - bool, perform initial dispatch [true]
-     *    - `decodeURLComponents` - bool, remove URL encoding from URL components [true]
-     *    - `decodeURLQuery` - bool, convert query string to object for each request context [false]
-     *
-     * @param {Object} options
-     * @api public
-     */
-
-    page.start = function (options) {
-        options = options || {};
-        if (running) {
+/**
+ * Declare route.
+ * Note: You can pass many fn
+ *
+ * @param {string} path
+ * @param {Function=} fn1
+ * @param {Function=} fn2
+ * @param {Function=} fnx
+ * @api public
+ */
+page.route = function (path, fn1, fn2, fnx) {
+    if (typeof path !== 'string') {
+        console.error('1st argument passed to page.route() must be a string. Use \'*\' if you want to apply callbacks to all routes');
+        return;
+    }
+    var route = new Route(path);
+    for (var i = 1; i < arguments.length; ++i) {
+        if (typeof arguments[i] !== 'function') {
+            console.error('argument ' + (i + 1) + ' passed to page.route() for route ' + path + ' is not a funciton');
             return;
         }
-        running = true;
-        if (options.decodeURLComponents === false) {
-            decodeURLComponents = false;
-        }
-        if (options.decodeURLQuery) {
-            decodeURLQuery = true;
-        }
-        if (options.popstate !== false) {
-            window.addEventListener('popstate', onpopstate, false);
-        }
-        if (options.click !== false) {
-            document.addEventListener(clickEvent, onclick, false);
-        }
-        page.replace(location.pathname + location.search + location.hash, undefined, options.dispatch !== false, {is_first: true});
-    };
+        page.callbacks.push(route.middleware(arguments[i]));
+    }
+};
 
-    /**
-     * Unbind click and popstate event handlers.
-     *
-     * @api public
-     */
-    page.stop = function () {
-        if (!running) {
+/**
+ * Show `path` with optional `state` object.
+ *
+ * @param {string} path
+ * @param {Object=} state
+ * @param {boolean=} dispatch
+ * @param {boolean=} push
+ * @param {Object=} customData
+ * @return {!Context}
+ * @api public
+ */
+page.show = function (path, state, dispatch, push, customData) {
+    // todo: make sure current request context has finished its work (success or not - doesn't matter)
+    var ctx = new Context(path, state, customData);
+    page.processContext(ctx, dispatch, push);
+    return ctx;
+};
+
+/**
+ * Execute context.
+ *
+ * @param {Object=} ctx
+ * @param {boolean=} dispatch
+ * @param {boolean=} push
+ * @return {!Context}
+ * @api private
+ */
+page.processContext = function (ctx, dispatch, push) {
+    currentRequestContext = ctx;
+    if (false !== dispatch) {
+        page.dispatch(ctx);
+    }
+    if (push === false) {
+        ctx.push = false;
+    }
+    if (false !== ctx.handled && false !== ctx.push) {
+        ctx.pushState();
+    }
+};
+
+/**
+ * Goes back in the history
+ * Back should always let the current route push state and then go back.
+ *
+ * @param {string} fallbackPath - fallback path to go back if no more history exists, if undefined defaults to page.base
+ * @param {Object=} state
+ * @api public
+ */
+
+page.back = function (fallbackPath, state) {
+    // todo: replace timeouts usage with promise on current request context
+    if (page.len > 0) {
+        // this may need more testing to see if all browsers
+        // wait for the next tick to go back in history
+        history.back();
+        page.len--;
+    } else if (fallbackPath) {
+        setTimeout(function () {
+            page.show(fallbackPath, state);
+        });
+    } else {
+        setTimeout(function () {
+            page.show(base, state);
+        });
+    }
+};
+
+/**
+ * Reload current page
+ *
+ * @api public
+ */
+page.reload = function () {
+    page.show(page.currentUrl(), null, true, false, {is_reload: true});
+};
+
+/**
+ * Replace current request context by new one using `path` and optional `state` object.
+ *
+ * @param {string} path
+ * @param {Object=} state
+ * @param {boolean=} dispatch
+ * @param {Object=} customData
+ * @return {Context}
+ * @api public
+ */
+page.replace = function (path, state, dispatch, customData) {
+    var ctx = new Context(path, state, customData);
+    currentRequestContext = ctx;
+    ctx.push = false; //< it does not change url
+    ctx.save(); // save before dispatching, which may redirect
+    if (false !== dispatch) {
+        page.dispatch(ctx);
+    }
+    return ctx;
+};
+
+/**
+ * Restore context.
+ *
+ * @param {Object=} context
+ * @param {boolean=} dispatch
+ * @param {boolean=} push
+ * @api public
+ */
+page.restoreContext = function (context, dispatch, push) {
+    if (context.customData) {
+        delete context.customData.is_history;
+        delete context.customData.is_reload;
+        delete context.customData.is_click;
+        delete context.customData.target;
+        delete context.customData.is_state_save;
+    }
+    context.is_restore = true;
+    page.processContext(context, dispatch, push);
+    delete context.is_restore;
+};
+
+/**
+ * Dispatch the given `ctx`.
+ *
+ * @param {Context} ctx
+ * @api private
+ */
+page.dispatch = function (ctx) {
+    var prev = prevRequestContext;
+    var i = 0;
+    var j = 0;
+
+    prevRequestContext = ctx;
+
+    /*var promise = new Promise();
+
+    if (prev) {
+        promise.the
+    }*/
+
+    function nextExit() {
+        var fn = page.exits[j++];
+        if (!fn) {
+            return nextEnter();
+        }
+        fn(prev, nextExit);
+    }
+
+    function nextEnter() {
+        var fn = page.callbacks[i++];
+
+        if (ctx.path !== page.currentUrlWithoutBase()) {
+            ctx.handled = false;
             return;
         }
-        currentRequestContext = null;
-        prevRequestContext = null;
-        page.len = 0;
-        running = false;
-        document.removeEventListener(clickEvent, onclick, false);
-        window.removeEventListener('popstate', onpopstate, false);
+        if (!fn) {
+            return unhandled(ctx);
+        }
+        fn(ctx, nextEnter);
+    }
+
+    if (prev) {
+        nextExit();
+    } else {
+        nextEnter();
+    }
+};
+
+/**
+ * Unhandled `ctx`. When it's not the initial
+ * popstate then redirect. If you wish to handle
+ * 404s on your own use `page.route('*', callback)`.
+ *
+ * @param {Context} ctx
+ * @api private
+ */
+function unhandled(ctx) {
+    if (ctx.handled) {
+        return;
+    }
+    var current = location.pathname + location.search + location.hash;
+    if (current === ctx.canonicalPath) {
+        return;
+    }
+    page.stop();
+    ctx.handled = false;
+    location.href = ctx.canonicalPath;
+}
+
+/**
+ * Register an exit route on `path` with
+ * callback `fn()`, which will be called
+ * on the previous context when a new
+ * page is visited.
+ */
+page.exit = function (path, fn) {
+    if (typeof path === 'function') {
+        return page.exit('*', path);
+    }
+
+    var route = new Route(path);
+    for (var i = 1; i < arguments.length; ++i) {
+        page.exits.push(route.middleware(arguments[i]));
+    }
+};
+
+/**
+ * Remove URL encoding from the given `str`.
+ * Accommodates whitespace in both x-www-form-urlencoded
+ * and regular percent-encoded form.
+ *
+ * @param {string} val - URL component to decode
+ */
+function decodeURLEncodedURIComponent(val) {
+    if (typeof val !== 'string') {
+        return val;
+    }
+    return decodeURLComponents ? decodeURIComponent(val.replace(/\+/g, ' ')) : val;
+}
+
+/**
+ * Initialize a new "request" `Context`
+ * with the given `path` and optional initial `state`.
+ *
+ * @constructor
+ * @param {string} path
+ * @param {Object=} state
+ * @param {Object=} customData
+ * @api public
+ */
+
+function Context(path, state, customData) {
+    if ('/' === path[0] && 0 !== path.indexOf(base)) {
+        path = base + path;
+    }
+    var i = path.indexOf('?');
+
+    this.canonicalPath = path;
+    this.path = path.replace(base, '') || '/';
+
+    this.title = document.title;
+    this.state = state || {};
+    this.state.path = path;
+    this.querystring = ~i ? decodeURLEncodedURIComponent(path.slice(i + 1)) : '';
+    this.pathname = decodeURLEncodedURIComponent(~i ? path.slice(0, i) : path);
+    this.params = {};
+    this.customData = customData || {};
+    this.push = null;
+    this.handled = null;
+
+    // fragment
+    this.hash = '';
+    if (!~this.path.indexOf('#')) {
+        return;
+    }
+    var parts = this.path.split('#');
+    this.path = parts[0];
+    this.hash = decodeURLEncodedURIComponent(parts[1]) || '';
+    this.querystring = this.querystring.split('#')[0];
+}
+
+/**
+ * Push state.
+ *
+ * @api private
+ */
+Context.prototype.pushState = function () {
+    page.len++;
+    history.pushState(this.state, this.title, this.canonicalPath);
+};
+
+/**
+ * Save the context state.
+ *
+ * @api public
+ */
+
+Context.prototype.save = function () {
+    history.replaceState(this.state, this.title, this.canonicalPath);
+};
+
+/**
+ * Initialize `Route` with the given HTTP `path`,
+ * and an array of `callbacks` and `options`.
+ *
+ * Options:
+ *
+ *   - `sensitive`    enable case-sensitive routes
+ *   - `strict`       enable strict matching for trailing slashes
+ *
+ * @constructor
+ * @param {string} path
+ * @param {Object=} options
+ * @api private
+ */
+
+function Route(path, options) {
+    options = options || {};
+    this.path = (path === '*') ? '(.*)' : path;
+    this.method = 'GET';
+    this.regexp = pathToRegexp(this.path, this.keys = [], options);
+}
+
+/**
+ * Return route middleware with
+ * the given callback `fn()`.
+ *
+ * @param {Function} fn
+ * @return {Function}
+ * @api public
+ */
+
+Route.prototype.middleware = function (fn) {
+    var self = this;
+    return function (ctx, next) {
+        if (self.match(ctx.path, ctx.params)) {
+            return fn(ctx, next);
+        }
+        next();
     };
+};
 
-    /**
-     * Declare route.
-     * Note: You can pass many fn
-     *
-     * @param {string} path
-     * @param {Function=} fn1
-     * @param {Function=} fn2
-     * @param {Function=} fnx
-     * @api public
-     */
-    page.route = function (path, fn1, fn2, fnx) {
-        if (typeof path !== 'string') {
-            console.error('1st argument passed to page.route() must be a string. Use \'*\' if you want to apply callbacks to all routes');
-            return;
-        }
-        if (typeof fn1 !== 'function') {
-            console.error('2nd argument passed to page.route() for route ' + path + ' is not a funciton');
-            return;
-        }
-        var route = new Route(path);
-        for (var i = 1; i < arguments.length; ++i) {
-            page.callbacks.push(route.middleware(arguments[i]));
-        }
-    };
+/**
+ * Check if this route matches `path`, if so
+ * populate `params`.
+ *
+ * @param {string} path
+ * @param {Object} params
+ * @return {boolean}
+ * @api private
+ */
 
-    /**
-     * Show `path` with optional `state` object.
-     *
-     * @param {string} path
-     * @param {Object=} state
-     * @param {boolean=} dispatch
-     * @param {boolean=} push
-     * @param {Object=} customData
-     * @return {!Context}
-     * @api public
-     */
-    page.show = function (path, state, dispatch, push, customData) {
-        // todo: make sure current request context has finished its work (success or not - doesn't matter)
-        var ctx = new Context(path, state, customData);
-        page.processContext(ctx, dispatch, push);
-        return ctx;
-    };
+Route.prototype.match = function (path, params) {
+    var keys = this.keys,
+        qsIndex = path.indexOf('?'),
+        pathname = ~qsIndex ? path.slice(0, qsIndex) : path,
+        m = this.regexp.exec(decodeURIComponent(pathname));
 
-    /**
-     * Execute context.
-     *
-     * @param {Object=} ctx
-     * @param {boolean=} dispatch
-     * @param {boolean=} push
-     * @return {!Context}
-     * @api private
-     */
-    page.processContext = function (ctx, dispatch, push) {
-        currentRequestContext = ctx;
-        if (false !== dispatch) {
-            page.dispatch(ctx);
-        }
-        if (push === false) {
-            ctx.push = false;
-        }
-        if (false !== ctx.handled && false !== ctx.push) {
-            ctx.pushState();
-        }
-    };
+    if (!m) {
+        return false;
+    }
 
-    /**
-     * Goes back in the history
-     * Back should always let the current route push state and then go back.
-     *
-     * @param {string} fallbackPath - fallback path to go back if no more history exists, if undefined defaults to page.base
-     * @param {Object=} state
-     * @api public
-     */
+    for (var i = 1, len = m.length; i < len; ++i) {
+        var key = keys[i - 1];
+        var val = decodeURLEncodedURIComponent(m[i]);
+        if (val !== undefined || !(Object.prototype.hasOwnProperty.call(params, key.name))) {
+            params[key.name] = val;
+        }
+    }
 
-    page.back = function (fallbackPath, state) {
-        // todo: replace timeouts usage with promise on current request context
-        if (page.len > 0) {
-            // this may need more testing to see if all browsers
-            // wait for the next tick to go back in history
-            history.back();
-            page.len--;
-        } else if (fallbackPath) {
+    return true;
+};
+
+
+/**
+ * Handle "populate" events.
+ */
+
+var onpopstate = (function () {
+    var loaded = false;
+    if ('undefined' === typeof window) {
+        return;
+    }
+    if (document.readyState === 'complete') {
+        loaded = true;
+    } else {
+        window.addEventListener('load', function () {
             setTimeout(function () {
-                page.show(fallbackPath, state);
-            });
+                loaded = true;
+            }, 0);
+        });
+    }
+    return function onpopstate(e) {
+        if (!loaded) {
+            return;
+        }
+        if (e.state) {
+            var path = e.state.path;
+            page.replace(path, e.state, true, {is_history: true});
         } else {
-            setTimeout(function () {
-                page.show(base, state);
-            });
+            page.show(location.pathname + location.hash, undefined, true, false, {is_history: true});
         }
     };
+})();
 
-    /**
-     * Reload current page
-     *
-     * @api public
-     */
-    page.reload = function () {
-        page.show(page.currentUrl(), null, true, false, {is_reload: true});
-    };
+/**
+ * Handle "click" events.
+ */
 
-    /**
-     * Replace current request context by new one using `path` and optional `state` object.
-     *
-     * @param {string} path
-     * @param {Object=} state
-     * @param {boolean=} init
-     * @param {boolean=} dispatch
-     * @param {Object=} customData
-     * @return {Context}
-     * @api public
-     */
-    page.replace = function (path, state, dispatch, customData) {
-        var ctx = new Context(path, state, customData);
-        currentRequestContext = ctx;
-        ctx.push = false; //< it does not change url
-        ctx.save(); // save before dispatching, which may redirect
-        if (false !== dispatch) {
-            page.dispatch(ctx);
-        }
-        return ctx;
-    };
+function onclick(e) {
 
-    /**
-     * Restore context.
-     *
-     * @param {Object=} context
-     * @param {boolean=} dispatch
-     * @param {boolean=} push
-     * @api public
-     */
-    page.restoreContext = function (context, dispatch, push) {
-        if (context.customData) {
-            delete context.customData.is_history;
-            delete context.customData.is_reload;
-            delete context.customData.is_click;
-            delete context.customData.target;
-            delete context.customData.is_state_save;
-        }
-        context.is_restore = true;
-        page.processContext(context, dispatch, push);
-        delete context.is_restore;
-    };
-
-    /**
-     * Dispatch the given `ctx`.
-     *
-     * @param {Context} ctx
-     * @api private
-     */
-    page.dispatch = function (ctx) {
-        var prev = prevRequestContext;
-        var i = 0;
-        var j = 0;
-
-        prevRequestContext = ctx;
-
-        /*var promise = new Promise();
-
-        if (prev) {
-            promise.the
-        }*/
-
-        function nextExit() {
-            var fn = page.exits[j++];
-            if (!fn) {
-                return nextEnter();
-            }
-            fn(prev, nextExit);
-        }
-
-        function nextEnter() {
-            var fn = page.callbacks[i++];
-
-            if (ctx.path !== page.currentUrlWithoutBase()) {
-                ctx.handled = false;
-                return;
-            }
-            if (!fn) {
-                return unhandled(ctx);
-            }
-            fn(ctx, nextEnter);
-        }
-
-        if (prev) {
-            nextExit();
-        } else {
-            nextEnter();
-        }
-    };
-
-    /**
-     * Unhandled `ctx`. When it's not the initial
-     * popstate then redirect. If you wish to handle
-     * 404s on your own use `page.route('*', callback)`.
-     *
-     * @param {Context} ctx
-     * @api private
-     */
-    function unhandled(ctx) {
-        if (ctx.handled) {
-            return;
-        }
-        var current = location.pathname + location.search + location.hash;
-        if (current === ctx.canonicalPath) {
-            return;
-        }
-        page.stop();
-        ctx.handled = false;
-        location.href = ctx.canonicalPath;
+    if (1 !== which(e)) {
+        return;
     }
 
-    /**
-     * Register an exit route on `path` with
-     * callback `fn()`, which will be called
-     * on the previous context when a new
-     * page is visited.
-     */
-    page.exit = function (path, fn) {
-        if (typeof path === 'function') {
-            return page.exit('*', path);
-        }
-
-        var route = new Route(path);
-        for (var i = 1; i < arguments.length; ++i) {
-            page.exits.push(route.middleware(arguments[i]));
-        }
-    };
-
-    /**
-     * Remove URL encoding from the given `str`.
-     * Accommodates whitespace in both x-www-form-urlencoded
-     * and regular percent-encoded form.
-     *
-     * @param {string} val - URL component to decode
-     */
-    function decodeURLEncodedURIComponent(val) {
-        if (typeof val !== 'string') {
-            return val;
-        }
-        return decodeURLComponents ? decodeURIComponent(val.replace(/\+/g, ' ')) : val;
+    if (e.metaKey || e.ctrlKey || e.shiftKey) {
+        return;
+    }
+    if (e.defaultPrevented) {
+        return;
     }
 
-    /**
-     * Initialize a new "request" `Context`
-     * with the given `path` and optional initial `state`.
-     *
-     * @constructor
-     * @param {string} path
-     * @param {Object=} state
-     * @param {Object=} customData
-     * @api public
-     */
 
-    function Context(path, state, customData) {
-        if ('/' === path[0] && 0 !== path.indexOf(base)) {
-            path = base + path;
-        }
-        var i = path.indexOf('?');
-
-        this.canonicalPath = path;
-        this.path = path.replace(base, '') || '/';
-
-        this.title = document.title;
-        this.state = state || {};
-        this.state.path = path;
-        this.querystring = ~i ? decodeURLEncodedURIComponent(path.slice(i + 1)) : '';
-        this.pathname = decodeURLEncodedURIComponent(~i ? path.slice(0, i) : path);
-        this.params = {};
-        this.customData = customData || {};
-        this.push = null;
-
-        // fragment
-        this.hash = '';
-        if (!~this.path.indexOf('#')) {
-            return;
-        }
-        var parts = this.path.split('#');
-        this.path = parts[0];
-        this.hash = decodeURLEncodedURIComponent(parts[1]) || '';
-        this.querystring = this.querystring.split('#')[0];
+    // ensure link
+    // use shadow dom when available
+    var el = e.path ? e.path[0] : e.target;
+    while (el && 'A' !== el.nodeName) {
+        el = el.parentNode;
+    }
+    if (!el || 'A' !== el.nodeName) {
+        return;
     }
 
-    /**
-     * Expose `Context`.
-     */
 
-    page.Context = Context;
-
-    /**
-     * Push state.
-     *
-     * @api private
-     */
-    Context.prototype.pushState = function () {
-        page.len++;
-        history.pushState(this.state, this.title, this.canonicalPath);
-    };
-
-    /**
-     * Save the context state.
-     *
-     * @api public
-     */
-
-    Context.prototype.save = function () {
-        history.replaceState(this.state, this.title, this.canonicalPath);
-    };
-
-    /**
-     * Initialize `Route` with the given HTTP `path`,
-     * and an array of `callbacks` and `options`.
-     *
-     * Options:
-     *
-     *   - `sensitive`    enable case-sensitive routes
-     *   - `strict`       enable strict matching for trailing slashes
-     *
-     * @constructor
-     * @param {string} path
-     * @param {Object=} options
-     * @api private
-     */
-
-    function Route(path, options) {
-        options = options || {};
-        this.path = (path === '*') ? '(.*)' : path;
-        this.method = 'GET';
-        this.regexp = pathtoRegexp(this.path,
-            this.keys = [],
-            options);
+    // Ignore if tag has
+    // 1. "download" attribute
+    // 2. rel="external" attribute
+    if (el.hasAttribute('download') || el.getAttribute('rel') === 'external') {
+        return;
     }
 
-    /**
-     * Expose `Route`.
-     */
+    // ensure non-hash for the same path
+    var link = el.getAttribute('href');
+    if (el.pathname === location.pathname && (el.hash || '#' === link)) {
+        return;
+    }
 
-    page.Route = Route;
+
+    // Check for mailto: in the href
+    if (link && link.indexOf('mailto:') > -1) {
+        return;
+    }
+
+    // check target
+    if (el.target) {
+        return;
+    }
+
+    // x-origin
+    if (!isSameOrigin(el.href)) {
+        return;
+    }
+
+    // rebuild path
+    var path = el.pathname + el.search + (el.hash || '');
+
+    // same page
+    var orig = path;
+
+    if (path.indexOf(base) === 0) {
+        path = path.substr(base.length);
+    }
+
+    if (base && orig === path) {
+        return;
+    }
+
+    e.preventDefault();
+    page.show(orig, undefined, undefined, undefined, {is_click: true, target: this.activeElement || e.target});
+}
+
+/**
+ * Event button.
+ */
+
+function which(e) {
+    e = e || window.event;
+    return null === e.which ? e.button : e.which;
+}
+
+/**
+ * Check if `href` is the same origin.
+ */
+
+function isSameOrigin(href) {
+    var origin = location.protocol + '//' + location.hostname;
+    if (location.port) {
+        origin += ':' + location.port;
+    }
+    return (href && (0 === href.indexOf(origin)));
+}
+
+/**
+ * Normalize the given path string, returning a regular expression.
+ *
+ * An empty array can be passed in for the keys, which will hold the
+ * placeholder key descriptions. For example, using `/user/:id`, `keys` will
+ * contain `[{ name: 'id', delimiter: '/', optional: false, repeat: false }]`.
+ *
+ * @param  {(String|RegExp|Array)} path
+ * @param  {Array}                 [keys]
+ * @param  {Object}                [options]
+ * @return {RegExp}
+ */
+function pathToRegexp(path, keys, options) {
 
     /**
-     * Return route middleware with
-     * the given callback `fn()`.
+     * Compile a string to a template function for the path.
      *
-     * @param {Function} fn
+     * @param  {String}   str
      * @return {Function}
-     * @api public
      */
+    pathToRegexp.compile = compile;
 
-    Route.prototype.middleware = function (fn) {
-        var self = this;
-        return function (ctx, next) {
-            if (self.match(ctx.path, ctx.params)) {
-                return fn(ctx, next);
-            }
-            next();
-        };
+    var isarray = Array.isArray || function (arr) {
+        return Object.prototype.toString.call(arr) === '[object Array]';
     };
-
-    /**
-     * Check if this route matches `path`, if so
-     * populate `params`.
-     *
-     * @param {string} path
-     * @param {Object} params
-     * @return {boolean}
-     * @api private
-     */
-
-    Route.prototype.match = function (path, params) {
-        var keys = this.keys,
-            qsIndex = path.indexOf('?'),
-            pathname = ~qsIndex ? path.slice(0, qsIndex) : path,
-            m = this.regexp.exec(decodeURIComponent(pathname));
-
-        if (!m) {
-            return false;
-        }
-
-        for (var i = 1, len = m.length; i < len; ++i) {
-            var key = keys[i - 1];
-            var val = decodeURLEncodedURIComponent(m[i]);
-            if (val !== undefined || !(hasOwnProperty.call(params, key.name))) {
-                params[key.name] = val;
-            }
-        }
-
-        return true;
-    };
-
-
-    /**
-     * Handle "populate" events.
-     */
-
-    var onpopstate = (function () {
-        var loaded = false;
-        if ('undefined' === typeof window) {
-            return;
-        }
-        if (document.readyState === 'complete') {
-            loaded = true;
-        } else {
-            window.addEventListener('load', function () {
-                setTimeout(function () {
-                    loaded = true;
-                }, 0);
-            });
-        }
-        return function onpopstate(e) {
-            if (!loaded) {
-                return;
-            }
-            if (e.state) {
-                var path = e.state.path;
-                page.replace(path, e.state, true, {is_history: true});
-            } else {
-                page.show(location.pathname + location.hash, undefined, true, false, {is_history: true});
-            }
-        };
-    })();
-
-    /**
-     * Handle "click" events.
-     */
-
-    function onclick(e) {
-
-        if (1 !== which(e)) {
-            return;
-        }
-
-        if (e.metaKey || e.ctrlKey || e.shiftKey) {
-            return;
-        }
-        if (e.defaultPrevented) {
-            return;
-        }
-
-
-        // ensure link
-        // use shadow dom when available
-        var el = e.path ? e.path[0] : e.target;
-        while (el && 'A' !== el.nodeName) {
-            el = el.parentNode;
-        }
-        if (!el || 'A' !== el.nodeName) {
-            return;
-        }
-
-
-        // Ignore if tag has
-        // 1. "download" attribute
-        // 2. rel="external" attribute
-        if (el.hasAttribute('download') || el.getAttribute('rel') === 'external') {
-            return;
-        }
-
-        // ensure non-hash for the same path
-        var link = el.getAttribute('href');
-        if (el.pathname === location.pathname && (el.hash || '#' === link)) {
-            return;
-        }
-
-
-        // Check for mailto: in the href
-        if (link && link.indexOf('mailto:') > -1) {
-            return;
-        }
-
-        // check target
-        if (el.target) {
-            return;
-        }
-
-        // x-origin
-        if (!sameOrigin(el.href)) {
-            return;
-        }
-
-
-        // rebuild path
-        var path = el.pathname + el.search + (el.hash || '');
-
-        // strip leading "/[drive letter]:" on NW.js on Windows
-        if (typeof process !== 'undefined' && path.match(/^\/[a-zA-Z]:\//)) {
-            path = path.replace(/^\/[a-zA-Z]:\//, '/');
-        }
-
-        // same page
-        var orig = path;
-
-        if (path.indexOf(base) === 0) {
-            path = path.substr(base.length);
-        }
-
-        if (base && orig === path) {
-            return;
-        }
-
-        e.preventDefault();
-        page.show(orig, undefined, undefined, undefined, {is_click: true, target: this.activeElement || e.target});
-    }
-
-    /**
-     * Event button.
-     */
-
-    function which(e) {
-        e = e || window.event;
-        return null === e.which ? e.button : e.which;
-    }
-
-    /**
-     * Check if `href` is the same origin.
-     */
-
-    function sameOrigin(href) {
-        var origin = location.protocol + '//' + location.hostname;
-        if (location.port) {
-            origin += ':' + location.port;
-        }
-        return (href && (0 === href.indexOf(origin)));
-    }
-
-    page.sameOrigin = sameOrigin;
-
-}).call(this, require('_process'))
-}, {"_process": 2, "path-to-regexp": 3}], 2: [function (require, module, exports) {
-// shim for using process in browser
-
-    var process = module.exports = {};
-
-    process.nextTick = (function () {
-        var canSetImmediate = typeof window !== 'undefined'
-            && window.setImmediate;
-        var canMutationObserver = typeof window !== 'undefined'
-            && window.MutationObserver;
-        var canPost = typeof window !== 'undefined'
-            && window.postMessage && window.addEventListener
-        ;
-
-        if (canSetImmediate) {
-            return function (f) {
-                return window.setImmediate(f)
-            };
-        }
-
-        var queue = [];
-
-        if (canMutationObserver) {
-            var hiddenDiv = document.createElement("div");
-            var observer = new MutationObserver(function () {
-                var queueList = queue.slice();
-                queue.length = 0;
-                queueList.forEach(function (fn) {
-                    fn();
-                });
-            });
-
-            observer.observe(hiddenDiv, {attributes: true});
-
-            return function nextTick(fn) {
-                if (!queue.length) {
-                    hiddenDiv.setAttribute('yes', 'no');
-                }
-                queue.push(fn);
-            };
-        }
-
-        if (canPost) {
-            window.addEventListener('message', function (ev) {
-                var source = ev.source;
-                if ((source === window || source === null) && ev.data === 'process-tick') {
-                    ev.stopPropagation();
-                    if (queue.length > 0) {
-                        var fn = queue.shift();
-                        fn();
-                    }
-                }
-            }, true);
-
-            return function nextTick(fn) {
-                queue.push(fn);
-                window.postMessage('process-tick', '*');
-            };
-        }
-
-        return function nextTick(fn) {
-            setTimeout(fn, 0);
-        };
-    })();
-
-    process.title = 'browser';
-    process.browser = true;
-    process.env = {};
-    process.argv = [];
-
-    function noop() {
-    }
-
-    process.on = noop;
-    process.addListener = noop;
-    process.once = noop;
-    process.off = noop;
-    process.removeListener = noop;
-    process.removeAllListeners = noop;
-    process.emit = noop;
-
-    process.binding = function (name) {
-        throw new Error('process.binding is not supported');
-    };
-
-// TODO(shtylman)
-    process.cwd = function () {
-        return '/'
-    };
-    process.chdir = function (dir) {
-        throw new Error('process.chdir is not supported');
-    };
-
-}, {}], 3: [function (require, module, exports) {
-    var isarray = require('isarray');
-
-    /**
-     * Expose `pathToRegexp`.
-     */
-    module.exports = pathToRegexp;
-    module.exports.parse = parse;
-    module.exports.compile = compile;
-    module.exports.tokensToFunction = tokensToFunction;
-    module.exports.tokensToRegExp = tokensToRegExp;
 
     /**
      * The main path matching regexp utility.
@@ -852,13 +745,33 @@
         '([\\/.])?(?:(?:\\:(\\w+)(?:\\(((?:\\\\.|[^()])+)\\))?|\\(((?:\\\\.|[^()])+)\\))([+*?])?|(\\*))'
     ].join('|'), 'g');
 
+
+    keys = keys || [];
+
+    if (!isarray(keys)) {
+        options = keys;
+        keys = [];
+    } else if (!options) {
+        options = {};
+    }
+
+    if (path instanceof RegExp) {
+        return regexpToRegexp(path, keys);
+    }
+
+    if (isarray(path)) {
+        return arrayToRegexp(path, keys, options);
+    }
+
+    return stringToRegexp(path, keys, options);
+
     /**
      * Parse a string for the raw tokens.
      *
      * @param  {String} str
      * @return {Array}
      */
-    function parse(str) {
+    function parseTokens(str) {
         var tokens = [];
         var key = 0;
         var index = 0;
@@ -926,7 +839,7 @@
      * @return {Function}
      */
     function compile(str) {
-        return tokensToFunction(parse(str));
+        return tokensToFunction(parseTokens(str));
     }
 
     /**
@@ -1087,7 +1000,7 @@
         var parts = [];
 
         for (var i = 0; i < path.length; i++) {
-            parts.push(pathToRegexp(path[i], keys, options).source);
+            parts.push(convertPathToRegexp(path[i], keys, options).source);
         }
 
         var regexp = new RegExp('(?:' + parts.join('|') + ')', flags(options));
@@ -1104,7 +1017,7 @@
      * @return {RegExp}
      */
     function stringToRegexp(path, keys, options) {
-        var tokens = parse(path);
+        var tokens = parseTokens(path);
         var re = tokensToRegExp(tokens, options);
 
         // Attach keys back to the regexp.
@@ -1180,43 +1093,6 @@
         return new RegExp('^' + route, flags(options));
     }
 
-    /**
-     * Normalize the given path string, returning a regular expression.
-     *
-     * An empty array can be passed in for the keys, which will hold the
-     * placeholder key descriptions. For example, using `/user/:id`, `keys` will
-     * contain `[{ name: 'id', delimiter: '/', optional: false, repeat: false }]`.
-     *
-     * @param  {(String|RegExp|Array)} path
-     * @param  {Array}                 [keys]
-     * @param  {Object}                [options]
-     * @return {RegExp}
-     */
-    function pathToRegexp(path, keys, options) {
-        keys = keys || [];
+}
 
-        if (!isarray(keys)) {
-            options = keys;
-            keys = [];
-        } else if (!options) {
-            options = {};
-        }
-
-        if (path instanceof RegExp) {
-            return regexpToRegexp(path, keys);
-        }
-
-        if (isarray(path)) {
-            return arrayToRegexp(path, keys, options);
-        }
-
-        return stringToRegexp(path, keys, options);
-    }
-
-},{"isarray":4}],4:[function(require,module,exports){
-module.exports = Array.isArray || function (arr) {
-  return Object.prototype.toString.call(arr) === '[object Array]';
-};
-
-},{}]},{},[1])(1)
-});
+})(typeof window !== "undefined" ? window : this);
