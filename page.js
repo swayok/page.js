@@ -5,9 +5,10 @@
 global.page = page;
 
 page.isSameOrigin = isSameOrigin;
-page.Context = Context;
+page.Request = Request;
 page.Route = Route;
 page.pathToRegexp = pathToRegexp;
+page.queryString = queryString;
 
 /**
  * Detect click event
@@ -20,6 +21,10 @@ var clickEvent = ('undefined' !== typeof document) && document.ontouchstart ? 't
  */
 var location = ('undefined' !== typeof window) && (window.history.location || window.location);
 
+var isArray = isArray || function (arr) {
+    return Object.prototype.toString.call(arr) === '[object Array]';
+};
+
 /**
  * Decode URL components (query string, pathname, hash).
  * Accommodates both regular percent encoding and x-www-form-urlencoded format.
@@ -27,7 +32,7 @@ var location = ('undefined' !== typeof window) && (window.history.location || wi
 var decodeURLComponents = true;
 
 /**
- * Decode URL query string into object for every request context
+ * Decode URL query string into object for every request
  * @type {boolean}
  */
 var decodeURLQuery = false;
@@ -35,32 +40,29 @@ var decodeURLQuery = false;
 /**
  * Base path.
  */
-
 var base = '';
 
 /**
  * Running flag.
  */
-
 var running;
 
 /**
- * Previous context, for capturing
+ * Previous request, for capturing
  * page exit events.
  */
-var prevRequestContext;
+var prevRequest;
 
 /**
- * Current context
+ * Current request
  */
-var currentRequestContext;
+var currentRequest;
 
 /**
  * Shortcut for `page.start(options)`.
  * @param {!Object} options
  * @api public
  */
-
 function page(options) {
     page.start(options);
 }
@@ -83,11 +85,11 @@ page.exits = [];
 page.len = 0;
 
 /**
- * Returns current context
+ * Returns current request
  * @return {Object}
  */
-page.currentRequestContext = function () {
-    return currentRequestContext;
+page.currentRequest = function () {
+    return currentRequest;
 };
 
 /**
@@ -95,7 +97,7 @@ page.currentRequestContext = function () {
  * @return {string}
  */
 page.currentUrlWithoutBase = function () {
-    return page.currentRequestContext().path;
+    return page.currentRequest().path;
 };
 
 /**
@@ -103,15 +105,15 @@ page.currentUrlWithoutBase = function () {
  * @return {string}
  */
 page.currentUrl = function () {
-    return page.currentRequestContext().canonicalPath;
+    return page.currentRequest().canonicalPath;
 };
 
 /**
- * Returns previous context
+ * Returns previous request
  * @return {Object}
  */
-page.previousRequestContext = function () {
-    return prevRequestContext;
+page.previousRequest = function () {
+    return prevRequest;
 };
 
 /**
@@ -119,7 +121,7 @@ page.previousRequestContext = function () {
  * @return {string}
  */
 page.previousUrlWithoutBase = function () {
-    return page.previousRequestContext().path;
+    return page.previousRequest().path;
 };
 
 /**
@@ -127,7 +129,7 @@ page.previousUrlWithoutBase = function () {
  * @return {string}
  */
 page.previousUrl = function () {
-    return page.previousRequestContext().canonicalPath;
+    return page.previousRequest().canonicalPath;
 };
 
 /**
@@ -136,7 +138,6 @@ page.previousUrl = function () {
  * @param {string} path
  * @api public
  */
-
 page.base = function (path) {
     if (0 === arguments.length) {
         return base;
@@ -153,12 +154,11 @@ page.base = function (path) {
  *    - `popstate` - bool, bind to popstate [true]
  *    - `dispatch` - bool, perform initial dispatch [true]
  *    - `decodeURLComponents` - bool, remove URL encoding from URL components [true]
- *    - `decodeURLQuery` - bool, convert query string to object for each request context [false]
+ *    - `decodeURLQuery` - bool, convert query string to object for each request request [false]
  *
  * @param {Object} options
  * @api public
  */
-
 page.start = function (options) {
     options = options || {};
     if (running) {
@@ -189,8 +189,8 @@ page.stop = function () {
     if (!running) {
         return;
     }
-    currentRequestContext = null;
-    prevRequestContext = null;
+    currentRequest = null;
+    prevRequest = null;
     page.len = 0;
     running = false;
     document.removeEventListener(clickEvent, onclick, false);
@@ -230,35 +230,35 @@ page.route = function (path, fn1, fn2, fnx) {
  * @param {boolean=} dispatch
  * @param {boolean=} push
  * @param {Object=} customData
- * @return {!Context}
+ * @return {!Request}
  * @api public
  */
 page.show = function (path, state, dispatch, push, customData) {
-    // todo: make sure current request context has finished its work (success or not - doesn't matter)
-    var ctx = new Context(path, state, customData);
-    page.processContext(ctx, dispatch, push);
-    return ctx;
+    // todo: make sure current request request has finished its work (success or not - doesn't matter)
+    var request = new Request(path, state, customData);
+    page.processRequest(request, dispatch, push);
+    return request;
 };
 
 /**
- * Execute context.
+ * Execute request.
  *
- * @param {Object=} ctx
+ * @param {Object=} request
  * @param {boolean=} dispatch
  * @param {boolean=} push
- * @return {!Context}
+ * @return {!Request}
  * @api private
  */
-page.processContext = function (ctx, dispatch, push) {
-    currentRequestContext = ctx;
+page.processRequest = function (request, dispatch, push) {
+    currentRequest = request;
     if (false !== dispatch) {
-        page.dispatch(ctx);
+        page.dispatch(request);
     }
     if (push === false) {
-        ctx.push = false;
+        request.push = false;
     }
-    if (false !== ctx.handled && false !== ctx.push) {
-        ctx.pushState();
+    if (false !== request.handled && false !== request.push) {
+        request.pushState();
     }
 };
 
@@ -270,9 +270,8 @@ page.processContext = function (ctx, dispatch, push) {
  * @param {Object=} state
  * @api public
  */
-
 page.back = function (fallbackPath, state) {
-    // todo: replace timeouts usage with promise on current request context
+    // todo: replace timeouts usage with promise on current request request
     if (page.len > 0) {
         // this may need more testing to see if all browsers
         // wait for the next tick to go back in history
@@ -299,59 +298,59 @@ page.reload = function () {
 };
 
 /**
- * Replace current request context by new one using `path` and optional `state` object.
+ * Replace current request request by new one using `path` and optional `state` object.
  *
  * @param {string} path
  * @param {Object=} state
  * @param {boolean=} dispatch
  * @param {Object=} customData
- * @return {Context}
+ * @return {Request}
  * @api public
  */
 page.replace = function (path, state, dispatch, customData) {
-    var ctx = new Context(path, state, customData);
-    currentRequestContext = ctx;
-    ctx.push = false; //< it does not change url
-    ctx.save(); // save before dispatching, which may redirect
+    var request = new Request(path, state, customData);
+    currentRequest = request;
+    request.push = false; //< it does not change url
+    request.saveState(); // save before dispatching, which may redirect
     if (false !== dispatch) {
-        page.dispatch(ctx);
+        page.dispatch(request);
     }
-    return ctx;
+    return request;
 };
 
 /**
- * Restore context.
+ * Restore request.
  *
- * @param {Object=} context
+ * @param {Object=} request
  * @param {boolean=} dispatch
  * @param {boolean=} push
  * @api public
  */
-page.restoreContext = function (context, dispatch, push) {
-    if (context.customData) {
-        delete context.customData.is_history;
-        delete context.customData.is_reload;
-        delete context.customData.is_click;
-        delete context.customData.target;
-        delete context.customData.is_state_save;
+page.restoreRequest = function (request, dispatch, push) {
+    if (request.customData) {
+        delete request.customData.is_history;
+        delete request.customData.is_reload;
+        delete request.customData.is_click;
+        delete request.customData.target;
+        delete request.customData.is_state_save;
     }
-    context.is_restore = true;
-    page.processContext(context, dispatch, push);
-    delete context.is_restore;
+    request.is_restore = true;
+    page.processRequest(request, dispatch, push);
+    delete request.is_restore;
 };
 
 /**
- * Dispatch the given `ctx`.
+ * Dispatch the given `request`.
  *
- * @param {Context} ctx
+ * @param {Request} request
  * @api private
  */
-page.dispatch = function (ctx) {
-    var prev = prevRequestContext;
+page.dispatch = function (request) {
+    var prev = prevRequest;
     var i = 0;
     var j = 0;
 
-    prevRequestContext = ctx;
+    prevRequest = request;
 
     /*var promise = new Promise();
 
@@ -370,14 +369,14 @@ page.dispatch = function (ctx) {
     function nextEnter() {
         var fn = page.callbacks[i++];
 
-        if (ctx.path !== page.currentUrlWithoutBase()) {
-            ctx.handled = false;
+        if (request.path !== page.currentUrlWithoutBase()) {
+            request.handled = false;
             return;
         }
         if (!fn) {
-            return unhandled(ctx);
+            return unhandled(request);
         }
-        fn(ctx, nextEnter);
+        fn(request, nextEnter);
     }
 
     if (prev) {
@@ -388,30 +387,30 @@ page.dispatch = function (ctx) {
 };
 
 /**
- * Unhandled `ctx`. When it's not the initial
+ * Unhandled `request`. When it's not the initial
  * popstate then redirect. If you wish to handle
  * 404s on your own use `page.route('*', callback)`.
  *
- * @param {Context} ctx
+ * @param {Request} request
  * @api private
  */
-function unhandled(ctx) {
-    if (ctx.handled) {
+function unhandled(request) {
+    if (request.handled) {
         return;
     }
     var current = location.pathname + location.search + location.hash;
-    if (current === ctx.canonicalPath) {
+    if (current === request.canonicalPath) {
         return;
     }
     page.stop();
-    ctx.handled = false;
-    location.href = ctx.canonicalPath;
+    request.handled = false;
+    location.href = request.canonicalPath;
 }
 
 /**
  * Register an exit route on `path` with
  * callback `fn()`, which will be called
- * on the previous context when a new
+ * on the previous request when a new
  * page is visited.
  */
 page.exit = function (path, fn) {
@@ -440,7 +439,7 @@ function decodeURLEncodedURIComponent(val) {
 }
 
 /**
- * Initialize a new "request" `Context`
+ * Initialize a new "request" `Request`
  * with the given `path` and optional initial `state`.
  *
  * @constructor
@@ -449,8 +448,7 @@ function decodeURLEncodedURIComponent(val) {
  * @param {Object=} customData
  * @api public
  */
-
-function Context(path, state, customData) {
+function Request(path, state, customData) {
     if ('/' === path[0] && 0 !== path.indexOf(base)) {
         path = base + path;
     }
@@ -471,13 +469,17 @@ function Context(path, state, customData) {
 
     // fragment
     this.hash = '';
-    if (!~this.path.indexOf('#')) {
-        return;
+    if (~this.path.indexOf('#')) {
+        var parts = this.path.split('#');
+        this.path = parts[0];
+        this.hash = decodeURLEncodedURIComponent(parts[1]) || '';
+        this.querystring = this.querystring.split('#')[0];
     }
-    var parts = this.path.split('#');
-    this.path = parts[0];
-    this.hash = decodeURLEncodedURIComponent(parts[1]) || '';
-    this.querystring = this.querystring.split('#')[0];
+
+    if (decodeURLQuery) {
+        this.query = queryString(this.querystring);
+    }
+
 }
 
 /**
@@ -485,18 +487,17 @@ function Context(path, state, customData) {
  *
  * @api private
  */
-Context.prototype.pushState = function () {
+Request.prototype.pushState = function () {
     page.len++;
     history.pushState(this.state, this.title, this.canonicalPath);
 };
 
 /**
- * Save the context state.
+ * Save the request state.
  *
  * @api public
  */
-
-Context.prototype.save = function () {
+Request.prototype.saveState = function () {
     history.replaceState(this.state, this.title, this.canonicalPath);
 };
 
@@ -514,7 +515,6 @@ Context.prototype.save = function () {
  * @param {Object=} options
  * @api private
  */
-
 function Route(path, options) {
     options = options || {};
     this.path = (path === '*') ? '(.*)' : path;
@@ -530,12 +530,11 @@ function Route(path, options) {
  * @return {Function}
  * @api public
  */
-
 Route.prototype.middleware = function (fn) {
     var self = this;
-    return function (ctx, next) {
-        if (self.match(ctx.path, ctx.params)) {
-            return fn(ctx, next);
+    return function (request, next) {
+        if (self.match(request.path, request.params)) {
+            return fn(request, next);
         }
         next();
     };
@@ -550,7 +549,6 @@ Route.prototype.middleware = function (fn) {
  * @return {boolean}
  * @api private
  */
-
 Route.prototype.match = function (path, params) {
     var keys = this.keys,
         qsIndex = path.indexOf('?'),
@@ -576,7 +574,6 @@ Route.prototype.match = function (path, params) {
 /**
  * Handle "populate" events.
  */
-
 var onpopstate = (function () {
     var loaded = false;
     if ('undefined' === typeof window) {
@@ -607,7 +604,6 @@ var onpopstate = (function () {
 /**
  * Handle "click" events.
  */
-
 function onclick(e) {
 
     if (1 !== which(e)) {
@@ -683,7 +679,6 @@ function onclick(e) {
 /**
  * Event button.
  */
-
 function which(e) {
     e = e || window.event;
     return null === e.which ? e.button : e.which;
@@ -723,10 +718,6 @@ function pathToRegexp(path, keys, options) {
      */
     pathToRegexp.compile = compile;
 
-    var isarray = Array.isArray || function (arr) {
-        return Object.prototype.toString.call(arr) === '[object Array]';
-    };
-
     /**
      * The main path matching regexp utility.
      *
@@ -748,7 +739,7 @@ function pathToRegexp(path, keys, options) {
 
     keys = keys || [];
 
-    if (!isarray(keys)) {
+    if (!isArray(keys)) {
         options = keys;
         keys = [];
     } else if (!options) {
@@ -759,7 +750,7 @@ function pathToRegexp(path, keys, options) {
         return regexpToRegexp(path, keys);
     }
 
-    if (isarray(path)) {
+    if (isArray(path)) {
         return arrayToRegexp(path, keys, options);
     }
 
@@ -880,7 +871,7 @@ function pathToRegexp(path, keys, options) {
                     }
                 }
 
-                if (isarray(value)) {
+                if (isArray(value)) {
                     if (!token.repeat) {
                         throw new TypeError('Expected "' + token.name + '" to not repeat, but received "' + value + '"');
                     }
@@ -1093,6 +1084,283 @@ function pathToRegexp(path, keys, options) {
         return new RegExp('^' + route, flags(options));
     }
 
+}
+
+/**
+ * Parse the given query `str` or `obj`, returning an object.
+ *
+ * @param {String} str | {Object} obj
+ * @return {Object}
+ * @api public
+ */
+function queryString (str) {
+
+    /**
+     * Turn the given `obj` into a query string
+     *
+     * @param {Object|Array} obj
+     * @param {string} prefix
+     * @return {String}
+     */
+    queryString.stringify = stringify;
+
+    /**
+     * Object#toString() ref for stringify().
+     */
+    var toString = Object.prototype.toString;
+
+    /**
+     * Cache non-integer test regexp.
+     */
+    var isInt = /^[0-9]+$/;
+
+    if (str === null || str === '') {
+        return {};
+    }
+    return typeof str === 'object' ? parseObject(str) : parseString(str);
+
+    function promote(parent, key) {
+        if (parent[key].length === 0) {
+            return parent[key] = {};
+        }
+        var t = {};
+        for (var i in parent[key]) {
+            t[i] = parent[key][i];
+        }
+        parent[key] = t;
+        return t;
+    }
+
+    function parse(parts, parent, key, val) {
+        var part = parts.shift();
+        // end
+        if (!part) {
+            if (isArray(parent[key])) {
+                parent[key].push(val);
+            } else if (typeof parent[key] === 'object') {
+                parent[key] = val;
+            } else if (typeof parent[key] === 'undefined') {
+                parent[key] = val;
+            } else {
+                parent[key] = [parent[key], val];
+            }
+            // array
+        } else {
+            var obj = parent[key] = parent[key] || [];
+            if (part === ']') {
+                if (isArray(obj)) {
+                    if (val !== '') {
+                        obj.push(val);
+                    }
+                } else if (typeof obj === 'object') {
+                    obj[Object.keys(obj).length] = val;
+                } else {
+                    parent[key] = [parent[key], val];
+                }
+                // prop
+            } else if (~part.indexOf(']')) {
+                part = part.substr(0, part.length - 1);
+                if (!isInt.test(part) && isArray(obj)) {
+                    obj = promote(parent, key);
+                }
+                parse(parts, obj, part, val);
+                // key
+            } else {
+                if (!isInt.test(part) && isArray(obj)) {
+                    obj = promote(parent, key);
+                }
+                parse(parts, obj, part, val);
+            }
+        }
+    }
+
+    /**
+     * Merge parent key/val pair.
+     */
+    function merge(parent, key, val) {
+        if (~key.indexOf(']')) {
+            parse(key.split('['), parent, 'base', val);
+        } else {
+            if (!isInt.test(key) && isArray(parent.base)) {
+                var t = {};
+                for (var k in parent.base) {
+                    t[k] = parent.base[k];
+                }
+                parent.base = t;
+            }
+            set(parent.base, key, val);
+        }
+
+        return parent;
+    }
+
+    /**
+     * Parse the given obj.
+     * @return {Object}
+     */
+    function parseObject(obj) {
+        var ret = {base: {}};
+        Object.keys(obj).forEach(function (name) {
+            merge(ret, name, obj[name]);
+        });
+        return ret.base;
+    }
+
+    /**
+     * Parse the given str.
+     * @return {Object}
+     */
+    function parseString(str) {
+        var ret = {base: {}};
+        String(str)
+            .split('&')
+            .reduce(
+                function (ret, pair) {
+                    try {
+                        pair = decodeURIComponent(pair.replace(/\+/g, ' '));
+                    } catch (e) {
+                        // ignore
+                    }
+
+                    var eql = pair.indexOf('=');
+                    var brace = lastBraceInKey(pair);
+                    var key = pair.substr(0, brace || eql);
+                    var val = pair.substr(brace || eql, pair.length);
+                    val = val.substr(val.indexOf('=') + 1, val.length);
+
+                    // ?foo
+                    if (key === '') {
+                        key = pair;
+                        val = '';
+                    }
+
+                    return merge(ret, key, val);
+                },
+                ret
+            );
+        return ret.base;
+    }
+
+    /**
+     * Turn the given `obj` into a query string
+     *
+     * @param {Object|Array} obj
+     * @param {string} prefix
+     * @return {String}
+     */
+    function stringify(obj, prefix) {
+        if (isArray(obj)) {
+            return stringifyArray(obj, prefix);
+        } else if (toString.call(obj) === '[object Object]') {
+            return stringifyObject(obj, prefix);
+        } else if (typeof obj === 'string') {
+            return stringifyString(obj, prefix);
+        } else {
+            return prefix + '=' + obj;
+        }
+    }
+
+    /**
+     * Stringify the given `str`.
+     *
+     * @param {String} str
+     * @param {String} prefix
+     * @return {String}
+     * @api private
+     */
+    function stringifyString(str, prefix) {
+        if (!prefix) {
+            throw new TypeError('stringify expects an object');
+        }
+        return prefix + '=' + encodeURIComponent(str);
+    }
+
+    /**
+     * Stringify the given `arr`.
+     *
+     * @param {Array} arr
+     * @param {String} prefix
+     * @return {String}
+     * @api private
+     */
+    function stringifyArray(arr, prefix) {
+        var ret = [];
+        if (!prefix) {
+            throw new TypeError('stringify expects an object');
+        }
+        for (var i = 0; i < arr.length; i++) {
+            ret.push(stringify(arr[i], prefix + '[' + i + ']'));
+        }
+        return ret.join('&');
+    }
+
+    /**
+     * Stringify the given `obj`.
+     *
+     * @param {Object} obj
+     * @param {String} prefix
+     * @return {String}
+     * @api private
+     */
+    function stringifyObject(obj, prefix) {
+        var ret = [];
+        var keys = Object.keys(obj);
+        var key;
+
+        for (var i = 0, len = keys.length; i < len; ++i) {
+            key = keys[i];
+            ret.push(stringify(obj[key], prefix
+                ? prefix + '[' + encodeURIComponent(key) + ']'
+                : encodeURIComponent(key)));
+        }
+
+        return ret.join('&');
+    }
+
+    /**
+     * Set `obj`'s `key` to `val` respecting
+     * the weird and wonderful syntax of a qs,
+     * where "foo=bar&foo=baz" becomes an array.
+     *
+     * @param {Object} obj
+     * @param {String} key
+     * @param {String} val
+     * @api private
+     */
+    function set (obj, key, val) {
+        var v = obj[key];
+        if (v === undefined) {
+            obj[key] = val;
+        } else if (isArray(v)) {
+            v.push(val);
+        } else {
+            obj[key] = [v, val];
+        }
+    }
+
+    /**
+     * Locate last brace in `str` within the key.
+     *
+     * @param {String} str
+     * @return {Number}
+     * @api private
+     */
+    function lastBraceInKey(str) {
+        var len = str.length;
+        var brace, c;
+        for (var i = 0; i < len; ++i) {
+            c = str[i];
+            if (c === ']') {
+                brace = false;
+            }
+            if (c === '[') {
+                brace = true;
+            }
+            if (c === '=' && !brace) {
+                return i;
+            }
+        }
+    }
 }
 
 })(typeof window !== "undefined" ? window : this);
