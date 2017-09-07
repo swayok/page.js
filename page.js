@@ -9,6 +9,7 @@ page.Request = Request;
 page.Route = Route;
 page.pathToRegexp = pathToRegexp;
 page.queryString = queryString;
+page.Deferred = Deferred;
 
 /**
  * Detect click event
@@ -51,12 +52,14 @@ var running;
  * Previous request, for capturing
  * page exit events.
  */
-var prevRequest;
+var previousRequest;
 
 /**
  * Current request
  */
-var currentRequest;
+var currentRequest = {
+    promise: Deferred().resolve().promise()
+};
 
 /**
  * Shortcut for `page.start(options)`.
@@ -71,8 +74,10 @@ function page(options) {
  * Callback functions.
  */
 
-page.callbacks = [];
-page.exits = [];
+var callbacks = [];
+var exits = [];
+var errorHandlers = [];
+var routeNotFoundHandlers = [];
 
 /**
  * Number of pages navigated to.
@@ -113,7 +118,7 @@ page.currentUrl = function () {
  * @return {Object}
  */
 page.previousRequest = function () {
-    return prevRequest;
+    return previousRequest;
 };
 
 /**
@@ -190,7 +195,7 @@ page.stop = function () {
         return;
     }
     currentRequest = null;
-    prevRequest = null;
+    previousRequest = null;
     page.len = 0;
     running = false;
     document.removeEventListener(clickEvent, onclick, false);
@@ -209,18 +214,87 @@ page.stop = function () {
  */
 page.route = function (path, fn1, fn2, fnx) {
     if (typeof path !== 'string') {
-        console.error('1st argument passed to page.route() must be a string. Use \'*\' if you want to apply callbacks to all routes');
-        return;
+        throw new TypeError('1st argument passed to page.route() must be a string. Use \'*\' if you want to apply callbacks to all routes');
     }
     var route = new Route(path);
-    for (var i = 1; i < arguments.length; ++i) {
+    for (var i = 1; i < arguments.length; i++) {
         if (typeof arguments[i] !== 'function') {
-            console.error('argument ' + (i + 1) + ' passed to page.route() for route ' + path + ' is not a funciton');
-            return;
+            throw new TypeError('argument ' + (i + 1) + ' passed to page.route() for route ' + path + ' is not a funciton');
         }
-        page.callbacks.push(route.middleware(arguments[i]));
+        callbacks.push(route.middleware(arguments[i], 'route_handler'));
     }
 };
+
+/**
+ * Register an error handler on `path` with callback `fn()`,
+ * which will be called on error during matching request.path
+ * @param {string} path
+ * @param {Function=} fn
+ * @api public
+ */
+page.error = function (path, fn) {
+    if (typeof path === 'function') {
+        return page.exit('*', path);
+    }
+
+    if (typeof fn !== 'function') {
+        throw new TypeError('2nd argument must be a function');
+    }
+
+    var route = new Route(path);
+    for (var i = 1; i < arguments.length; i++) {
+        errorHandlers.push(route.middleware(arguments[i], 'error_handler'));
+    }
+};
+
+/**
+ * Register a page not found handler on `path` with callback `fn()`,
+ * which will be called if there is no route that matches request.path
+ * but matches provided `path`
+ * @param {string} path
+ * @param {Function=} fn
+ * @api public
+ */
+page.notFound = function (path, fn) {
+    if (typeof path === 'function') {
+        return page.exit('*', path);
+    }
+
+    if (typeof fn !== 'function') {
+        throw new TypeError('2nd argument must be a function');
+    }
+
+    var route = new Route(path);
+    for (var i = 1; i < arguments.length; i++) {
+        routeNotFoundHandlers.push(route.middleware(arguments[i], 'page_not_found_handler'));
+    }
+};
+
+/**
+ * Register an exit route on `path` with callback `fn()`,
+ * which will be called on the previous request when a new
+ * page is visited.
+ */
+page.exit = function (path, fn) {
+    if (typeof path === 'function') {
+        return page.exit('*', path);
+    }
+
+    if (typeof fn !== 'function') {
+        throw new TypeError('2nd argument must be a function');
+    }
+
+    var route = new Route(path);
+    for (var i = 1; i < arguments.length; ++i) {
+        exits.push(route.middleware(arguments[i], 'exit'));
+    }
+};
+
+function checkIfStarted() {
+    if (!running) {
+        throw new Error('Attempt to navigate before router is started');
+    }
+}
 
 /**
  * Show `path` with optional `state` object.
@@ -234,32 +308,10 @@ page.route = function (path, fn1, fn2, fnx) {
  * @api public
  */
 page.show = function (path, state, dispatch, push, customData) {
-    // todo: make sure current request request has finished its work (success or not - doesn't matter)
+    checkIfStarted();
     var request = new Request(path, state, customData);
-    page.processRequest(request, dispatch, push);
+    processRequest(request, dispatch, push);
     return request;
-};
-
-/**
- * Execute request.
- *
- * @param {Object=} request
- * @param {boolean=} dispatch
- * @param {boolean=} push
- * @return {!Request}
- * @api private
- */
-page.processRequest = function (request, dispatch, push) {
-    currentRequest = request;
-    if (false !== dispatch) {
-        page.dispatch(request);
-    }
-    if (push === false) {
-        request.push = false;
-    }
-    if (false !== request.handled && false !== request.push) {
-        request.pushState();
-    }
 };
 
 /**
@@ -271,20 +323,16 @@ page.processRequest = function (request, dispatch, push) {
  * @api public
  */
 page.back = function (fallbackPath, state) {
-    // todo: replace timeouts usage with promise on current request request
+    checkIfStarted();
     if (page.len > 0) {
-        // this may need more testing to see if all browsers
-        // wait for the next tick to go back in history
-        history.back();
-        page.len--;
+        currentRequest.promise.always(function () {
+            history.back();
+            page.len--;
+        });
     } else if (fallbackPath) {
-        setTimeout(function () {
-            page.show(fallbackPath, state);
-        });
+        page.show(fallbackPath, state, true, true);
     } else {
-        setTimeout(function () {
-            page.show(base, state);
-        });
+        page.show(base, state, true, true);
     }
 };
 
@@ -294,7 +342,12 @@ page.back = function (fallbackPath, state) {
  * @api public
  */
 page.reload = function () {
-    page.show(page.currentUrl(), null, true, false, {is_reload: true});
+    checkIfStarted();
+    var url = page.currentUrl();
+    if (url === undefined) {
+        throw new Error('Attempt to reload page before router has dispatched at least one page')
+    }
+    page.show(url, null, true, false, {is_reload: true});
 };
 
 /**
@@ -309,11 +362,12 @@ page.reload = function () {
  */
 page.replace = function (path, state, dispatch, customData) {
     var request = new Request(path, state, customData);
-    currentRequest = request;
     request.push = false; //< it does not change url
-    request.saveState(); // save before dispatching, which may redirect
-    if (false !== dispatch) {
-        page.dispatch(request);
+    currentRequest.promise.always(function () {
+        request.saveState(); // save before dispatching, which may redirect
+    });
+    if (dispatch !== false) {
+        request.dispatch();
     }
     return request;
 };
@@ -321,7 +375,7 @@ page.replace = function (path, state, dispatch, customData) {
 /**
  * Restore request.
  *
- * @param {Object=} request
+ * @param {Request=} request
  * @param {boolean=} dispatch
  * @param {boolean=} push
  * @api public
@@ -340,89 +394,21 @@ page.restoreRequest = function (request, dispatch, push) {
 };
 
 /**
- * Dispatch the given `request`.
+ * Execute request.
  *
- * @param {Request} request
+ * @param {Object=} request
+ * @param {boolean=} dispatch
+ * @param {boolean=} push
  * @api private
  */
-page.dispatch = function (request) {
-    var prev = prevRequest;
-    var i = 0;
-    var j = 0;
-
-    prevRequest = request;
-
-    /*var promise = new Promise();
-
-    if (prev) {
-        promise.the
-    }*/
-
-    function nextExit() {
-        var fn = page.exits[j++];
-        if (!fn) {
-            return nextEnter();
-        }
-        fn(prev, nextExit);
+function processRequest(request, dispatch, push) {
+    if (push === false) {
+        request.push = false;
     }
-
-    function nextEnter() {
-        var fn = page.callbacks[i++];
-
-        if (request.path !== page.currentUrlWithoutBase()) {
-            request.handled = false;
-            return;
-        }
-        if (!fn) {
-            return unhandled(request);
-        }
-        fn(request, nextEnter);
+    if (dispatch !== false) {
+        request.dispatch();
     }
-
-    if (prev) {
-        nextExit();
-    } else {
-        nextEnter();
-    }
-};
-
-/**
- * Unhandled `request`. When it's not the initial
- * popstate then redirect. If you wish to handle
- * 404s on your own use `page.route('*', callback)`.
- *
- * @param {Request} request
- * @api private
- */
-function unhandled(request) {
-    if (request.handled) {
-        return;
-    }
-    var current = location.pathname + location.search + location.hash;
-    if (current === request.canonicalPath) {
-        return;
-    }
-    page.stop();
-    request.handled = false;
-    location.href = request.canonicalPath;
 }
-
-/**
- * Register an exit route on `path` with
- * callback `fn()`, which will be called
- * on the previous request when a new
- * page is visited.
- */
-page.exit = function (path, fn) {
-    if (typeof path === 'function') {
-        return page.exit('*', path);
-    }
-
-    var route = new Route(path);
-    for (var i = 1; i < arguments.length; ++i) {
-        page.exits.push(route.middleware(arguments[i]));
-    }
-};
 
 /**
  * Remove URL encoding from the given `str`.
@@ -436,6 +422,17 @@ function decodeURLEncodedURIComponent(val) {
         return val;
     }
     return decodeURLComponents ? decodeURIComponent(val.replace(/\+/g, ' ')) : val;
+}
+
+/**
+ * Default handler for requests that do not have matching routes
+ * Called only when there is no matching route not found handlers provided via page.notFound(path, fn)
+ */
+function routeNotFound() {
+    var current = document.location.pathname + document.location.search + document.location.hash;
+    if (current !== request.canonicalPath) {
+        document.location = request.canonicalPath;
+    }
 }
 
 /**
@@ -465,7 +462,10 @@ function Request(path, state, customData) {
     this.params = {};
     this.customData = customData || {};
     this.push = null;
-    this.handled = null;
+    this.route_found = false;
+    this.route_not_found_handled = false;
+    this.error = false;
+    this.error_handled = false;
 
     // fragment
     this.hash = '';
@@ -502,6 +502,76 @@ Request.prototype.saveState = function () {
 };
 
 /**
+ * Dispatch the given `request`.
+ * @return {Deferred.promise}
+ * @api public
+ */
+Request.prototype.dispatch = function () {
+    var request = this;
+    var deferred = Deferred();
+    this.promise = deferred.promise();
+
+    currentRequest.promise.always(function () {
+        previousRequest = currentRequest;
+        currentRequest = request;
+
+        Deferred
+            .queue(
+                previousRequest && previousRequest.path ? exits : [],
+                previousRequest,
+                [previousRequest, request]
+            )
+            .done(function () {
+                Deferred
+                    .queue(callbacks, request, [request])
+                    .done(function () {
+                        deferred.resolve();
+                    })
+                    .fail(function () {
+                        deferred.reject.apply(deferred, arguments);
+                    });
+            })
+            .fail(function () {
+                deferred.reject.apply(deferred, arguments);
+            });
+
+        request.promise
+            .done(function () {
+                if (request.route_found) {
+                    if (request.push) {
+                        request.pushState();
+                    }
+                } else {
+                    Deferred
+                        .queue(routeNotFoundHandlers, request, [request])
+                        .done(function () {
+                            if (!request.route_not_found_handled) {
+                                routeNotFound();
+                            }
+                        });
+                }
+            })
+            .fail(function (error) {
+                Deferred
+                    .queue(errorHandlers)
+                    .done(function () {
+                        if (!request.error_handled) {
+                            console.error('Error occured while handling a request', request, error);
+                            throw Error('Error occured while handling a request')
+                        }
+                    })
+                    .fail(function () {
+                        console.error('Error occured while handling a request', request, error);
+                        console.error('Error occured while handling a request error', arguments);
+                        throw Error('Error occured while handling a request')
+                    });
+            });
+        });
+
+    return request.promise;
+};
+
+/**
  * Initialize `Route` with the given HTTP `path`,
  * and an array of `callbacks` and `options`.
  *
@@ -517,7 +587,8 @@ Request.prototype.saveState = function () {
  */
 function Route(path, options) {
     options = options || {};
-    this.path = (path === '*') ? '(.*)' : path;
+    this.is_wildcard = (path === '*');
+    this.path = this.is_wildcard ? '(.*)' : path;
     this.method = 'GET';
     this.regexp = pathToRegexp(this.path, this.keys = [], options);
 }
@@ -527,16 +598,45 @@ function Route(path, options) {
  * the given callback `fn()`.
  *
  * @param {Function} fn
+ * @param {string} type - type of function: route_handler, route_not_found_handler, exit, error_handler
  * @return {Function}
  * @api public
  */
-Route.prototype.middleware = function (fn) {
+Route.prototype.middleware = function (fn, type) {
     var self = this;
-    return function (request, next) {
-        if (self.match(request.path, request.params)) {
-            return fn(request, next);
-        }
-        next();
+    return function (request) {
+        var args = arguments;
+        return Deferred(function (deferred) {
+            if (self.match(request.path, request.params)) {
+                // placed here to be able to rollback these values in callbacks
+                if (type === 'route_handler' && !self.is_wildcard) {
+                    request.route_found = true;
+                } else if (type === 'route_not_found_handler') {
+                    request.route_not_found_handled = true;
+                } else if (type === 'error_handler') {
+                    request.error_handled = true;
+                }
+                try {
+                    var ret = fn.apply(request, args);
+                    if (typeof ret === 'object' && typeof ret.then === 'function') {
+                        ret.then(
+                            function () {
+                                deferred.resolve();
+                            },
+                            function () {
+                                deferred.reject();
+                            }
+                        );
+                    } else {
+                        deferred.resolve();
+                    }
+                } catch (exc) {
+                    deferred.reject(exc);
+                }
+            } else {
+                deferred.resolve();
+            }
+        });
     };
 };
 
@@ -1362,5 +1462,266 @@ function queryString (str) {
         }
     }
 }
+
+/**
+ * Promise/Deferred implementation
+ * Source: https://github.com/warpdesign/deferred-js
+ * @param {function=} fn
+ * @return {promise|deferred}
+ * @constructor
+ */
+function Deferred(fn) {
+    var status = 'pending';
+    var doneFuncs = [];
+    var failFuncs = [];
+    var progressFuncs = [];
+    var resultArgs = null;
+
+    function foreach(arr, handler) {
+        if (isArray(arr)) {
+            for (var i = 0; i < arr.length; i++) {
+                handler(arr[i]);
+            }
+        } else {
+            handler(arr);
+        }
+    }
+
+    var promise = {
+        done: function () {
+            for (var i = 0; i < arguments.length; i++) {
+                // skip any undefined or null arguments
+                if (!arguments[i]) {
+                    continue;
+                }
+
+                if (isArray(arguments[i])) {
+                    var arr = arguments[i];
+                    for (var j = 0; j < arr.length; j++) {
+                        // immediately call the function if the deferred has been resolved
+                        if (status === 'resolved') {
+                            arr[j].apply(this, resultArgs);
+                        }
+
+                        doneFuncs.push(arr[j]);
+                    }
+                }
+                else {
+                    // immediately call the function if the deferred has been resolved
+                    if (status === 'resolved') {
+                        arguments[i].apply(this, resultArgs);
+                    }
+
+                    doneFuncs.push(arguments[i]);
+                }
+            }
+
+            return this;
+        },
+
+        fail: function () {
+            for (var i = 0; i < arguments.length; i++) {
+                // skip any undefined or null arguments
+                if (!arguments[i]) {
+                    continue;
+                }
+
+                if (isArray(arguments[i])) {
+                    var arr = arguments[i];
+                    for (var j = 0; j < arr.length; j++) {
+                        // immediately call the function if the deferred has been resolved
+                        if (status === 'rejected') {
+                            arr[j].apply(this, resultArgs);
+                        }
+
+                        failFuncs.push(arr[j]);
+                    }
+                }
+                else {
+                    // immediately call the function if the deferred has been resolved
+                    if (status === 'rejected') {
+                        arguments[i].apply(this, resultArgs);
+                    }
+
+                    failFuncs.push(arguments[i]);
+                }
+            }
+
+            return this;
+        },
+
+        always: function () {
+            return this.done.apply(this, arguments).fail.apply(this, arguments);
+        },
+
+        progress: function () {
+            for (var i = 0; i < arguments.length; i++) {
+                // skip any undefined or null arguments
+                if (!arguments[i]) {
+                    continue;
+                }
+
+                if (isArray(arguments[i])) {
+                    var arr = arguments[i];
+                    for (var j = 0; j < arr.length; j++) {
+                        // immediately call the function if the deferred has been resolved
+                        if (status === 'pending') {
+                            progressFuncs.push(arr[j]);
+                        }
+                    }
+                }
+                else {
+                    // immediately call the function if the deferred has been resolved
+                    if (status === 'pending') {
+                        progressFuncs.push(arguments[i]);
+                    }
+                }
+            }
+
+            return this;
+        },
+
+        then: function () {
+            // fail callbacks
+            if (arguments.length > 1 && arguments[1]) {
+                this.fail(arguments[1]);
+            }
+
+            // done callbacks
+            if (arguments.length > 0 && arguments[0]) {
+                this.done(arguments[0]);
+            }
+
+            // notify callbacks
+            if (arguments.length > 2 && arguments[2]) {
+                this.progress(arguments[2]);
+            }
+        },
+
+        promise: function (obj) {
+            if (!obj) {
+                return promise;
+            } else {
+                for (var i in promise) {
+                    obj[i] = promise[i];
+                }
+                return obj;
+            }
+        },
+
+        state: function () {
+            return status;
+        },
+
+        debug: function () {
+            console.log('[debug]', doneFuncs, failFuncs, status);
+        },
+
+        isRejected: function () {
+            return status === 'rejected';
+        },
+
+        isResolved: function () {
+            return status === 'resolved';
+        }
+    };
+
+    var deferred = {
+        resolveWith: function (context) {
+            if (status === 'pending') {
+                status = 'resolved';
+                var args = resultArgs = (arguments.length > 1) ? arguments[1] : [];
+                for (var i = 0; i < doneFuncs.length; i++) {
+                    doneFuncs[i].apply(context, args);
+                }
+            }
+            return this;
+        },
+
+        rejectWith: function (context) {
+            if (status === 'pending') {
+                status = 'rejected';
+                var args = resultArgs = (arguments.length > 1) ? arguments[1] : [];
+                for (var i = 0; i < failFuncs.length; i++) {
+                    failFuncs[i].apply(context, args);
+                }
+            }
+            return this;
+        },
+
+        notifyWith: function (context) {
+            if (status === 'pending') {
+                var args = resultArgs = (arguments.length > 1) ? arguments[1] : [];
+                for (var i = 0; i < progressFuncs.length; i++) {
+                    progressFuncs[i].apply(context, args);
+                }
+            }
+            return this;
+        },
+
+        resolve: function () {
+            return this.resolveWith(this, arguments);
+        },
+
+        reject: function () {
+            return this.rejectWith(this, arguments);
+        },
+
+        notify: function () {
+            return this.notifyWith(this, arguments);
+        }
+    };
+
+    var obj = promise.promise(deferred);
+
+    if (typeof fn === 'function') {
+        fn.apply(obj, [obj]);
+    }
+
+    return obj;
+}
+
+/**
+ * Run functions one by one. Each function MUST return Deferred object
+ * @param {Array=} functions
+ * @param {Object=} context - context of each funciton
+ * @param {Array=} args - arguments to pass to each funciton
+ * @return {*}
+ */
+Deferred.queue = function (functions, context, args) {
+    var deferred = Deferred();
+    if (!functions) {
+        return deferred.resolve();
+    }
+    if (!isArray(functions)) {
+        throw new TypeError('Deferred.queue: argument 1 (functions) must be an array or empty');
+    }
+    if (!functions.length) {
+        return deferred.resolve();
+    }
+    if (!context) {
+        context = deferred;
+    } else if (typeof context !== 'object') {
+        throw new TypeError('Deferred.queue: argument 2 (context) must be an object or empty');
+    }
+    if (!args) {
+        args = [];
+    } else if (!isArray(args)) {
+        throw new TypeError('Deferred.queue: argument 3 (args) must be an array or empty');
+    }
+
+    var i = 0;
+    var next = function () {
+        if (i < functions.length) {
+            functions[i++]
+                .apply(context, args)
+                .then(next, deferred.reject);
+        } else {
+            deferred.resolve();
+        }
+    };
+    next();
+    return deferred.promise();
+};
 
 })(typeof window !== "undefined" ? window : this);

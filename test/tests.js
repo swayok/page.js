@@ -271,14 +271,14 @@
         });
       });
 
-      describe('ctx.handled', function() {
+      describe('ctx.route_found', function() {
         it('should skip unhandled redirect if exists', function() {
           page('/page/:page', function(ctx, next) {
-            ctx.handled = true;
+            ctx.route_found = true;
             next();
           });
           var ctx = page.show('/page/1');
-          expect(ctx.handled).to.be.ok;
+          expect(ctx.route_found).to.be.ok;
         });
       });
 
