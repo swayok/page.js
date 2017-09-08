@@ -472,10 +472,13 @@ function Request(path, state, customData) {
     this.params = {};
     this.customData = customData || {};
     this.push = null;
-    this.route_found = false;
-    this.route_not_found_handled = false;
+    this.routeFound = false;
+    this.routeNotFoundHandled = false;
     this.error = false;
-    this.error_handled = false;
+    this.errorHandled = false;
+    this.isRestore = false;
+    this.isModal = false;
+    this.lasNonModalRequest = null; // used only when isModal = true
 
     // fragment
     this.hash = '';
@@ -549,7 +552,7 @@ Request.prototype.dispatch = function () {
 
         request.promise
             .done(function () {
-                if (request.route_found) {
+                if (request.routeFound) {
                     if (request.push) {
                         request.pushState();
                     }
@@ -557,7 +560,7 @@ Request.prototype.dispatch = function () {
                     Deferred
                         .queue(routeNotFoundHandlers, request, [request])
                         .done(function () {
-                            if (!request.route_not_found_handled) {
+                            if (!request.routeNotFoundHandled) {
                                 routeNotFound(request);
                             }
                         });
@@ -567,7 +570,7 @@ Request.prototype.dispatch = function () {
                 Deferred
                     .queue(errorHandlers)
                     .done(function () {
-                        if (!request.error_handled) {
+                        if (!request.errorHandled) {
                             console.error('Error occured while handling a request', request, error);
                             if (error instanceof Error) {
                                 throw error;
@@ -635,11 +638,11 @@ Route.prototype.middleware = function (fn, type) {
             if (self.match(request.path, request.params)) {
                 // placed here to be able to rollback these values in callbacks
                 if (type === 'route_handler' && !self.is_wildcard) {
-                    request.route_found = true;
+                    request.routeFound = true;
                 } else if (type === 'route_not_found_handler') {
-                    request.route_not_found_handled = true;
+                    request.routeNotFoundHandled = true;
                 } else if (type === 'error_handler') {
-                    request.error_handled = true;
+                    request.errorHandled = true;
                 }
                 try {
                     var ret = fn.apply(request, args);
