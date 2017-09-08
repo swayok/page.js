@@ -192,7 +192,12 @@ page.start = function (options) {
     if (options.click !== false) {
         document.addEventListener(clickEvent, onclick, false);
     }
-    page.replace(location.pathname + location.search + location.hash, undefined, options.dispatch !== false, {is_first: true});
+    page.replace(
+        location.pathname + location.search + location.hash,
+        undefined,
+        options.dispatch !== false,
+        {env: {is_first: true}}
+    );
 };
 
 /**
@@ -357,7 +362,7 @@ page.reload = function () {
     if (url === undefined) {
         throw new Error('Attempt to reload page before router has dispatched at least one page')
     }
-    page.show(url, null, true, false, {is_reload: true});
+    page.show(url, null, true, false, {env :{is_reload: true}});
 };
 
 /**
@@ -392,15 +397,11 @@ page.replace = function (path, state, dispatch, customData) {
  */
 page.restoreRequest = function (request, dispatch, push) {
     if (request.customData) {
-        delete request.customData.is_history;
-        delete request.customData.is_reload;
-        delete request.customData.is_click;
-        delete request.customData.target;
-        delete request.customData.is_state_save;
+        request.customData.env = {};
     }
-    request.is_restore = true;
-    page.processRequest(request, dispatch, push);
-    delete request.is_restore;
+    request.customData.env.is_restore = true;
+    request.promise = null;
+    processRequest(request, dispatch, push);
 };
 
 /**
@@ -470,15 +471,18 @@ function Request(path, state, customData) {
     this.querystring = ~i ? decodeURLEncodedURIComponent(path.slice(i + 1)) : '';
     this.pathname = decodeURLEncodedURIComponent(~i ? path.slice(0, i) : path);
     this.params = {};
-    this.customData = customData || {};
-    this.push = null;
+    this.customData = (customData && (typeof customData === 'object')) ? customData : {};
+    if (!this.customData.env || typeof this.customData.env !== 'object') {
+        this.customData.env = {};
+    }
+
+    this.promise = null;
+
+    this.push = true;
     this.routeFound = false;
     this.routeNotFoundHandled = false;
     this.error = false;
     this.errorHandled = false;
-    this.isRestore = false;
-    this.isModal = false;
-    this.lasNonModalRequest = null; // used only when isModal = true
 
     // fragment
     this.hash = '';
@@ -495,6 +499,10 @@ function Request(path, state, customData) {
 
 }
 
+Request.prototype.env = function () {
+    return this.customData.env || {};
+};
+
 /**
  * Push state.
  *
@@ -502,7 +510,37 @@ function Request(path, state, customData) {
  */
 Request.prototype.pushState = function () {
     page.len++;
-    history.pushState(this.state, this.title, this.canonicalPath);
+    if (this.isInModalDialog()) {
+        history.pushState(this.state, this.title, this.customData.env.parent_request.canonicalPath + '#!' + this.canonicalPath);
+    } else {
+        history.pushState(this.state, this.title, this.canonicalPath);
+    }
+};
+
+/**
+ * Mark this request as handled by modal dialog.
+ * This will modify only hash part of current page's address when calling pushState()
+ */
+Request.prototype.handledByModalDialog = function () {
+    this.customData.env.is_modal = true;
+    this.customData.env.parent_request = new Request(document.location.pathname + document.location.search);
+};
+
+/**
+ * Check if request is handled by modal dialog
+ */
+Request.prototype.isInModalDialog = function () {
+    return this.env().is_modal;
+};
+
+/**
+ * Handle modal dialog close
+ * @param dispatch
+ */
+Request.prototype.modalDialogClosed = function (dispatch) {
+    if (this.isInModalDialog()) {
+        page.restoreRequest(this.customData.env.parent_request, dispatch !== false, this.push);
+    }
 };
 
 /**
@@ -525,6 +563,11 @@ Request.prototype.dispatch = function () {
     this.promise = deferred.promise();
     var currentRequestBackup = currentRequest;
     var prevRequestBackup = previousRequest;
+
+    // todo: handle situations with modal dialogs (request has a hash with '!' at start):
+    // 1. if prev requiest is not dialog - dispatch 2nd request from hash (new dialog opened on page that had no dialog)
+    // 2. if prev request is dialog with same unhashed path - dispatch only request from hash (1 dialog switched to other)
+    // 3. if prev request is dialog with other unhashed path - do same thing as 1st variant (everything changed)
 
     currentRequest.promise.always(function () {
         previousRequest = currentRequest;
@@ -615,8 +658,8 @@ Request.prototype.dispatch = function () {
  */
 function Route(path, options) {
     options = options || {};
-    this.is_wildcard = (path === '*');
-    this.path = this.is_wildcard ? '(.*)' : path;
+    this.isWildcard = (path === '*');
+    this.path = this.isWildcard ? '(.*)' : path;
     this.method = 'GET';
     this.regexp = pathToRegexp(this.path, this.keys = [], options);
 }
@@ -637,7 +680,7 @@ Route.prototype.middleware = function (fn, type) {
         return Deferred(function (deferred) {
             if (self.match(request.path, request.params)) {
                 // placed here to be able to rollback these values in callbacks
-                if (type === 'route_handler' && !self.is_wildcard) {
+                if (type === 'route_handler' && !self.isWildcard) {
                     request.routeFound = true;
                 } else if (type === 'route_not_found_handler') {
                     request.routeNotFoundHandled = true;
@@ -722,9 +765,9 @@ var onpopstate = (function () {
         }
         if (e.state) {
             var path = e.state.path;
-            page.replace(path, e.state, true, {is_history: true});
+            page.replace(path, e.state, true, {env: {is_history: true}});
         } else {
-            page.show(location.pathname + location.hash, undefined, true, false, {is_history: true});
+            page.show(location.pathname + location.hash, undefined, true, false, {env: {is_history: true}});
         }
     };
 })();
@@ -801,7 +844,7 @@ function onclick(e) {
     }
 
     e.preventDefault();
-    page.show(orig, undefined, undefined, undefined, {is_click: true, target: this.activeElement || e.target});
+    page.show(orig, undefined, true, true, {env: {is_click: true, target: this.activeElement || e.target}});
 }
 
 /**
