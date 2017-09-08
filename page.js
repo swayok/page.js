@@ -26,6 +26,16 @@ var isArray = isArray || function (arr) {
     return Object.prototype.toString.call(arr) === '[object Array]';
 };
 
+var normalizeArguments = function(args) {
+    if (!args) {
+        return [];
+    } else if (typeof args === 'object' && args.length) {
+        return isArray(args) ? args : (args.length === 1 ? [args[0]] : Array.apply(null, args));
+    } else {
+        return [args];
+    }
+};
+
 /**
  * Decode URL components (query string, pathname, hash).
  * Accommodates both regular percent encoding and x-www-form-urlencoded format.
@@ -428,7 +438,7 @@ function decodeURLEncodedURIComponent(val) {
  * Default handler for requests that do not have matching routes
  * Called only when there is no matching route not found handlers provided via page.notFound(path, fn)
  */
-function routeNotFound() {
+function routeNotFound(request) {
     var current = document.location.pathname + document.location.search + document.location.hash;
     if (current !== request.canonicalPath) {
         document.location = request.canonicalPath;
@@ -510,6 +520,8 @@ Request.prototype.dispatch = function () {
     var request = this;
     var deferred = Deferred();
     this.promise = deferred.promise();
+    var currentRequestBackup = currentRequest;
+    var prevRequestBackup = previousRequest;
 
     currentRequest.promise.always(function () {
         previousRequest = currentRequest;
@@ -546,7 +558,7 @@ Request.prototype.dispatch = function () {
                         .queue(routeNotFoundHandlers, request, [request])
                         .done(function () {
                             if (!request.route_not_found_handled) {
-                                routeNotFound();
+                                routeNotFound(request);
                             }
                         });
                 }
@@ -557,13 +569,26 @@ Request.prototype.dispatch = function () {
                     .done(function () {
                         if (!request.error_handled) {
                             console.error('Error occured while handling a request', request, error);
-                            throw Error('Error occured while handling a request')
+                            if (error instanceof Error) {
+                                throw error;
+                            } else {
+                                throw new Error('Error occured while handling a request');
+                            }
                         }
                     })
                     .fail(function () {
                         console.error('Error occured while handling a request', request, error);
                         console.error('Error occured while handling a request error', arguments);
-                        throw Error('Error occured while handling a request')
+                        if (error instanceof Error) {
+                            throw error;
+                        } else {
+                            throw new Error('Error occured while handling a request and inside error handler');
+                        }
+                    })
+                    .always(function () {
+                        // restore previous state of requests
+                        currentRequest = currentRequestBackup;
+                        previousRequest = prevRequestBackup;
                     });
             });
         });
@@ -624,7 +649,7 @@ Route.prototype.middleware = function (fn, type) {
                                 deferred.resolve();
                             },
                             function () {
-                                deferred.reject();
+                                deferred.reject.apply(deferred, arguments);
                             }
                         );
                     } else {
@@ -1477,16 +1502,6 @@ function Deferred(fn) {
     var progressFuncs = [];
     var resultArgs = null;
 
-    function foreach(arr, handler) {
-        if (isArray(arr)) {
-            for (var i = 0; i < arr.length; i++) {
-                handler(arr[i]);
-            }
-        } else {
-            handler(arr);
-        }
-    }
-
     var promise = {
         done: function () {
             for (var i = 0; i < arguments.length; i++) {
@@ -1627,33 +1642,33 @@ function Deferred(fn) {
     };
 
     var deferred = {
-        resolveWith: function (context) {
+        resolveWith: function (context, args) {
             if (status === 'pending') {
                 status = 'resolved';
-                var args = resultArgs = (arguments.length > 1) ? arguments[1] : [];
+                resultArgs = normalizeArguments(args);
                 for (var i = 0; i < doneFuncs.length; i++) {
-                    doneFuncs[i].apply(context, args);
+                    doneFuncs[i].apply(context, resultArgs);
                 }
             }
             return this;
         },
 
-        rejectWith: function (context) {
+        rejectWith: function (context, args) {
             if (status === 'pending') {
                 status = 'rejected';
-                var args = resultArgs = (arguments.length > 1) ? arguments[1] : [];
+                resultArgs = normalizeArguments(args);
                 for (var i = 0; i < failFuncs.length; i++) {
-                    failFuncs[i].apply(context, args);
+                    failFuncs[i].apply(context, resultArgs);
                 }
             }
             return this;
         },
 
-        notifyWith: function (context) {
+        notifyWith: function (context, args) {
             if (status === 'pending') {
-                var args = resultArgs = (arguments.length > 1) ? arguments[1] : [];
+                resultArgs = normalizeArguments(args);
                 for (var i = 0; i < progressFuncs.length; i++) {
-                    progressFuncs[i].apply(context, args);
+                    progressFuncs[i].apply(context, resultArgs);
                 }
             }
             return this;
@@ -1711,13 +1726,21 @@ Deferred.queue = function (functions, context, args) {
     }
 
     var i = 0;
+    var results = [];
     var next = function () {
         if (i < functions.length) {
             functions[i++]
                 .apply(context, args)
-                .then(next, deferred.reject);
+                .then(
+                    function () {
+                        results.push(normalizeArguments(arguments));
+                        next();
+                    },
+                    function () {
+                        deferred.reject.apply(deferred, arguments);
+                    });
         } else {
-            deferred.resolve();
+            deferred.resolve.call(deferred, results);
         }
     };
     next();
