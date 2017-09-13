@@ -61,15 +61,23 @@ var running;
 /**
  * Previous request, for capturing
  * page exit events.
+ * @type {Request}
  */
 var previousRequest;
 
 /**
  * Current request
+ * @type {Request}
  */
 var currentRequest = {
     promise: Deferred().resolve().promise()
 };
+
+/**
+ * Amount of Request objects created. Used to identify requests via Request.id() or Request.isSameAs(otherRequest)
+ * @type {number}
+ */
+var requestsCreated = 0;
 
 /**
  * Shortcut for `page.start(options)`.
@@ -90,18 +98,8 @@ var errorHandlers = [];
 var routeNotFoundHandlers = [];
 
 /**
- * Number of pages navigated to.
- * @type {number}
- *
- *     page.len == 0;
- *     page.show('/login');
- *     page.len == 1;
- */
-page.len = 0;
-
-/**
  * Returns current request
- * @return {Object}
+ * @return {Request}
  */
 page.currentRequest = function () {
     return currentRequest;
@@ -120,12 +118,12 @@ page.currentUrlWithoutBase = function () {
  * @return {string}
  */
 page.currentUrl = function () {
-    return page.currentRequest().canonicalPath;
+    return page.currentRequest().fullUrl(true);
 };
 
 /**
  * Returns previous request
- * @return {Object}
+ * @return {Request}
  */
 page.previousRequest = function () {
     return previousRequest;
@@ -144,7 +142,7 @@ page.previousUrlWithoutBase = function () {
  * @return {string}
  */
 page.previousUrl = function () {
-    return page.previousRequest().canonicalPath;
+    return page.previousRequest().fullUrl(true);
 };
 
 /**
@@ -192,10 +190,11 @@ page.start = function (options) {
     if (options.click !== false) {
         document.addEventListener(clickEvent, onclick, false);
     }
-    page.replace(
-        location.pathname + location.search + location.hash,
+    page.show(
+        getDocumentUrl(true),
         undefined,
         options.dispatch !== false,
+        true,
         {env: {is_first: true}}
     );
 };
@@ -211,7 +210,6 @@ page.stop = function () {
     }
     currentRequest = null;
     previousRequest = null;
-    page.len = 0;
     running = false;
     document.removeEventListener(clickEvent, onclick, false);
     window.removeEventListener('popstate', onpopstate, false);
@@ -311,6 +309,10 @@ function checkIfStarted() {
     }
 }
 
+function getDocumentUrl(withHashbang) {
+    return window.location.pathname + window.location.search + (withHashbang ? window.location.hash : '');
+}
+
 /**
  * Show `path` with optional `state` object.
  *
@@ -339,10 +341,9 @@ page.show = function (path, state, dispatch, push, customData) {
  */
 page.back = function (fallbackPath, state) {
     checkIfStarted();
-    if (page.len > 0) {
+    if (window.history.length > 0) {
         currentRequest.promise.always(function () {
-            history.back();
-            page.len--;
+            window.history.back();
         });
     } else if (fallbackPath) {
         page.show(fallbackPath, state, true, true);
@@ -366,7 +367,7 @@ page.reload = function () {
 };
 
 /**
- * Replace current request request by new one using `path` and optional `state` object.
+ * Replace current request by new one using `path` and optional `state` object.
  *
  * @param {string} path
  * @param {Object=} state
@@ -379,7 +380,7 @@ page.replace = function (path, state, dispatch, customData) {
     var request = new Request(path, state, customData);
     request.push = false; //< it does not change url
     currentRequest.promise.always(function () {
-        request.saveState(); // save before dispatching, which may redirect
+        request.saveState();
     });
     if (dispatch !== false) {
         request.dispatch();
@@ -400,14 +401,13 @@ page.restoreRequest = function (request, dispatch, push) {
         request.customData.env = {};
     }
     request.customData.env.is_restore = true;
-    request.promise = null;
     processRequest(request, dispatch, push);
 };
 
 /**
  * Execute request.
  *
- * @param {Object=} request
+ * @param {Request=} request
  * @param {boolean=} dispatch
  * @param {boolean=} push
  * @api private
@@ -418,6 +418,8 @@ function processRequest(request, dispatch, push) {
     }
     if (dispatch !== false) {
         request.dispatch();
+    } else if (request.push) {
+        request.pushState();
     }
 }
 
@@ -440,9 +442,9 @@ function decodeURLEncodedURIComponent(val) {
  * Called only when there is no matching route not found handlers provided via page.notFound(path, fn)
  */
 function routeNotFound(request) {
-    var current = document.location.pathname + document.location.search + document.location.hash;
-    if (current !== request.canonicalPath) {
-        document.location = request.canonicalPath;
+    var current = getDocumentUrl(true);
+    if (current !== request.fullUrl(true)) {
+        document.location = request.fullUrl(true);
     }
 }
 
@@ -457,17 +459,23 @@ function routeNotFound(request) {
  * @api public
  */
 function Request(path, state, customData) {
+    requestsCreated++;
+    var id = requestsCreated;
+
+    this.id = function () {
+        return id;
+    };
+
     if ('/' === path[0] && 0 !== path.indexOf(base)) {
         path = base + path;
     }
     var i = path.indexOf('?');
 
-    this.canonicalPath = path;
+    //this.canonicalPath = path;
     this.path = path.replace(base, '') || '/';
 
     this.title = document.title;
     this.state = state || {};
-    this.state.path = path;
     this.querystring = ~i ? decodeURLEncodedURIComponent(path.slice(i + 1)) : '';
     this.pathname = decodeURLEncodedURIComponent(~i ? path.slice(0, i) : path);
     this.params = {};
@@ -484,6 +492,9 @@ function Request(path, state, customData) {
     this.error = false;
     this.errorHandled = false;
 
+    this.parentRequest = null;  //< current request is subrequest of this request
+    this.subRequest = null;     //< current request has a subrequest
+
     // fragment
     this.hash = '';
     if (~this.path.indexOf('#')) {
@@ -491,6 +502,12 @@ function Request(path, state, customData) {
         this.path = parts[0];
         this.hash = decodeURLEncodedURIComponent(parts[1]) || '';
         this.querystring = this.querystring.split('#')[0];
+        this.pathname = this.pathname.split('#')[0];
+        if (this.hash[0] === '!') {
+            this.subRequest = new Request(this.hash.slice(1));
+            this.subRequest.parentRequest = this;
+            this.hash = '';
+        }
     }
 
     if (decodeURLQuery) {
@@ -499,47 +516,91 @@ function Request(path, state, customData) {
 
 }
 
+/**
+ * Compare paths and query strings of 2 requests
+ * @param {Request} otherRequest
+ * @return {boolean}
+ */
+Request.prototype.hasSamePathAs = function (otherRequest) {
+    return typeof otherRequest === 'object' && this.path === otherRequest.path && this.querystring === otherRequest.querystring;
+};
+
+/**
+ * Make full URL for this request
+ *
+ * @param {boolean=} withHashbang - false: URL will not include hasbang part [default: true]
+ * @return {string}
+ */
+Request.prototype.fullUrl = function (withHashbang) {
+    if (this.isSubRequest()) {
+        return this.parentRequest.fullUrl();
+    } else {
+        var url = base + this.path;
+        if (this.querystring.length > 0) {
+            url += '?' + this.querystring;
+        }
+        if (withHashbang !== false) {
+            if (this.hasSubRequest()) {
+                url += '#!' + this.subRequest.makeUrlToUseItInParentRequest();
+            } else if (this.hash.length > 0) {
+                url += '#' + this.hash;
+            }
+        }
+        return url;
+    }
+};
+
+/**
+ * Make URL for this request. This URL may be used in hasbang of parent request
+ *
+ * @return {string}
+ */
+Request.prototype.makeUrlToUseItInParentRequest = function () {
+    var url = base + this.path;
+    if (this.querystring.length > 0) {
+        url += '?' + this.querystring;
+    }
+    return url;
+};
+
+/**
+ * Get requests unique id
+ *
+ * @return {integer}
+ */
+Request.prototype.id = function () {
+    throw new Error('This method should never be called. Something wrong happened.');
+};
+
+/**
+ * Compare unique ids of 2 requests
+ *
+ * @param {Request} otherRequest
+ * @return {boolean}
+ */
+Request.prototype.isSameAs = function (otherRequest) {
+    return this.id() === otherRequest.id();
+};
+
+/**
+ * Get environment-related data for this request
+ * @return {object}
+ */
 Request.prototype.env = function () {
     return this.customData.env || {};
 };
 
 /**
- * Push state.
- *
+ * Push state if current url differs from new one (otherwise - history.replaceState() will be used instead)
+ * @param {boolean=} force - true: ignore url equality testing and force history.pushState()
  * @api private
  */
-Request.prototype.pushState = function () {
-    page.len++;
-    if (this.isInModalDialog()) {
-        history.pushState(this.state, this.title, this.customData.env.parent_request.canonicalPath + '#!' + this.canonicalPath);
+Request.prototype.pushState = function (force) {
+    var url = this.fullUrl(true);
+    if (force || getDocumentUrl(true) !== url) {
+        history.pushState(this.state, this.title, url);
     } else {
-        history.pushState(this.state, this.title, this.canonicalPath);
-    }
-};
-
-/**
- * Mark this request as handled by modal dialog.
- * This will modify only hash part of current page's address when calling pushState()
- */
-Request.prototype.handledByModalDialog = function () {
-    this.customData.env.is_modal = true;
-    this.customData.env.parent_request = new Request(document.location.pathname + document.location.search);
-};
-
-/**
- * Check if request is handled by modal dialog
- */
-Request.prototype.isInModalDialog = function () {
-    return this.env().is_modal;
-};
-
-/**
- * Handle modal dialog close
- * @param dispatch
- */
-Request.prototype.modalDialogClosed = function (dispatch) {
-    if (this.isInModalDialog()) {
-        page.restoreRequest(this.customData.env.parent_request, dispatch !== false, this.push);
+        this.saveState();
     }
 };
 
@@ -549,7 +610,69 @@ Request.prototype.modalDialogClosed = function (dispatch) {
  * @api public
  */
 Request.prototype.saveState = function () {
-    history.replaceState(this.state, this.title, this.canonicalPath);
+    history.replaceState(this.state, this.title, this.fullUrl(true));
+};
+
+/**
+ * Convert this request to subrequest.
+ * This will modify only hash part of current page's address when calling pushState()
+ */
+Request.prototype.convertToSubrequest = function () {
+    if (!currentRequest.isSameAs(this)) {
+        this.parentRequest = currentRequest;
+    } else {
+        this.parentRequest = previousRequest;
+    }
+    this.parentRequest.setSubRequest(this);
+};
+
+/**
+ * Check if request is handled by modal dialog
+ */
+Request.prototype.isSubRequest = function () {
+    return !!this.parentRequest;
+};
+
+/**
+ * Check if request has subrequest
+ */
+Request.prototype.hasSubRequest = function () {
+    return !!this.subRequest;
+};
+
+/**
+ * Restore parent request
+ * @param dispatch
+ */
+Request.prototype.restoreParentRequest = function (dispatch) {
+    if (this.isSubRequest() && currentRequest.hasSubRequest() && currentRequest.isSameAs(this.parentRequest)) {
+        this.parentRequest.removeSubRequest();
+        if (dispatch === false) {
+            if (this.parentRequest.push) {
+                this.parentRequest.pushState();
+            }
+        } else {
+            this.parentRequest.customData.env.is_restore = true;
+            this.parentRequest.dispatch();
+        }
+    }
+};
+
+/**
+ * Set sub request for current request
+ * @param request
+ */
+Request.prototype.setSubRequest = function (request) {
+    this.subRequest = request;
+    this.parentRequest = null;
+    request.removeSubRequest();
+};
+
+/**
+ * Remove sub request from current request
+ */
+Request.prototype.removeSubRequest = function () {
+    this.subRequest = null;
 };
 
 /**
@@ -560,7 +683,7 @@ Request.prototype.saveState = function () {
 Request.prototype.dispatch = function () {
     var request = this;
     var deferred = Deferred();
-    this.promise = deferred.promise();
+    var promise = deferred.promise();
     var currentRequestBackup = currentRequest;
     var prevRequestBackup = previousRequest;
 
@@ -593,11 +716,24 @@ Request.prototype.dispatch = function () {
                 deferred.reject.apply(deferred, arguments);
             });
 
-        request.promise
+        (request.promise = promise)
             .done(function () {
                 if (request.routeFound) {
                     if (request.push) {
                         request.pushState();
+                    }
+                    delete currentRequest.customData.env.is_restore; //< not needed anymore
+                    if (request.hasSubRequest()) {
+                        var prevRequest = previousRequest;
+                        setTimeout(function () {
+                            request.subRequest.dispatch().always(function () {
+                                previousRequest = prevRequest;
+                                currentRequest = request;
+                            });
+                        }, 300);
+                    } else if (request.isSubRequest()) {
+                        previousRequest = prevRequestBackup;
+                        currentRequest = request.parentRequest;
                     }
                 } else {
                     Deferred
@@ -611,7 +747,7 @@ Request.prototype.dispatch = function () {
             })
             .fail(function (error) {
                 Deferred
-                    .queue(errorHandlers)
+                    .queue(errorHandlers, request, [request])
                     .done(function () {
                         if (!request.errorHandled) {
                             console.error('Error occured while handling a request', request, error);
@@ -639,7 +775,7 @@ Request.prototype.dispatch = function () {
             });
         });
 
-    return request.promise;
+    return promise;
 };
 
 /**
@@ -763,12 +899,7 @@ var onpopstate = (function () {
         if (!loaded) {
             return;
         }
-        if (e.state) {
-            var path = e.state.path;
-            page.replace(path, e.state, true, {env: {is_history: true}});
-        } else {
-            page.show(location.pathname + location.hash, undefined, true, false, {env: {is_history: true}});
-        }
+        page.show(getDocumentUrl(true), e.state || null, true, false, {env: {is_history: true}});
     };
 })();
 
@@ -777,7 +908,7 @@ var onpopstate = (function () {
  */
 function onclick(e) {
 
-    if (1 !== which(e)) {
+    if (which(e) !== 1) {
         return;
     }
 
@@ -792,10 +923,10 @@ function onclick(e) {
     // ensure link
     // use shadow dom when available
     var el = e.path ? e.path[0] : e.target;
-    while (el && 'A' !== el.nodeName) {
+    while (el && el.nodeName !== 'A') {
         el = el.parentNode;
     }
-    if (!el || 'A' !== el.nodeName) {
+    if (!el || el.nodeName !== 'A') {
         return;
     }
 
@@ -809,7 +940,7 @@ function onclick(e) {
 
     // ensure non-hash for the same path
     var link = el.getAttribute('href');
-    if (el.pathname === location.pathname && (el.hash || '#' === link)) {
+    if (el.pathname === window.location.pathname && (el.hash || '#' === link)) {
         return;
     }
 
@@ -860,9 +991,9 @@ function which(e) {
  */
 
 function isSameOrigin(href) {
-    var origin = location.protocol + '//' + location.hostname;
-    if (location.port) {
-        origin += ':' + location.port;
+    var origin = window.location.protocol + '//' + window.location.hostname;
+    if (window.location.port) {
+        origin += ':' + window.location.port;
     }
     return (href && (0 === href.indexOf(origin)));
 }
