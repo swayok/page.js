@@ -80,6 +80,12 @@ var currentRequest = {
 var requestsCreated = 0;
 
 /**
+ * Amount of push states
+ * @type {number}
+ */
+var navs = 0;
+
+/**
  * Shortcut for `page.start(options)`.
  * @param {!Object} options
  * @api public
@@ -178,6 +184,7 @@ page.start = function (options) {
         return;
     }
     running = true;
+    navs = 0;
     if (options.decodeURLComponents === false) {
         decodeURLComponents = false;
     }
@@ -341,8 +348,11 @@ page.show = function (path, state, dispatch, push, customData) {
  */
 page.back = function (fallbackPath, state) {
     checkIfStarted();
-    if (window.history.length > 0) {
+    if (navs > 1 && window.history.length > 0) {
+        // navs > 1 conditions is required to prevent unexpected backs in case when router was just launched and there
+        // is no information if previous URL has same domain and base path.
         currentRequest.promise.always(function () {
+            navs--;
             window.history.back();
         });
     } else if (fallbackPath) {
@@ -598,6 +608,7 @@ Request.prototype.env = function () {
 Request.prototype.pushState = function (force) {
     var url = this.fullUrl(true);
     if (force || getDocumentUrl(true) !== url) {
+        navs++;
         history.pushState(this.state, this.title, url);
     } else {
         this.saveState();
