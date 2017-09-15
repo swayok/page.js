@@ -369,11 +369,10 @@ page.back = function (fallbackPath, state) {
  */
 page.reload = function () {
     checkIfStarted();
-    var url = page.currentUrl();
-    if (url === undefined) {
+    if (!currentRequest || !currentRequest.path) {
         throw new Error('Attempt to reload page before router has dispatched at least one page')
     }
-    page.show(url, null, true, false, {env :{is_reload: true}});
+    page.show(currentRequest.fullUrl(), currentRequest.state, true, true, {env: {is_reload: true}});
 };
 
 /**
@@ -685,7 +684,6 @@ Request.prototype.setSubRequest = function (request) {
 Request.prototype.removeSubRequest = function () {
     this.subRequest = null;
 };
-
 /**
  * Dispatch the given `request`.
  * @return {Deferred.promise}
@@ -697,11 +695,6 @@ Request.prototype.dispatch = function () {
     var promise = deferred.promise();
     var currentRequestBackup = currentRequest;
     var prevRequestBackup = previousRequest;
-
-    // todo: handle situations with modal dialogs (request has a hash with '!' at start):
-    // 1. if prev requiest is not dialog - dispatch 2nd request from hash (new dialog opened on page that had no dialog)
-    // 2. if prev request is dialog with same unhashed path - dispatch only request from hash (1 dialog switched to other)
-    // 3. if prev request is dialog with other unhashed path - do same thing as 1st variant (everything changed)
 
     currentRequest.promise.always(function () {
         previousRequest = currentRequest;
