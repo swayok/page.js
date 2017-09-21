@@ -449,11 +449,13 @@ function decodeURLEncodedURIComponent(val) {
 /**
  * Default handler for requests that do not have matching routes
  * Called only when there is no matching route not found handlers provided via page.notFound(path, fn)
+ *
+ * @param {Request} request
  */
 function routeNotFound(request) {
     var current = getDocumentUrl(true);
-    if (current !== request.fullUrl(true)) {
-        document.location = request.fullUrl(true);
+    if (current !== request.originalPath && current !== request.fullUrl()) {
+        document.location = request.originalPath;
     }
 }
 
@@ -475,7 +477,14 @@ function Request(path, state, customData) {
         return id;
     };
 
-    if ('/' === path[0] && 0 !== path.indexOf(base)) {
+    this.originalPath = path;
+
+    if (path.indexOf('http') === 0 && isSameOrigin(path)) {
+        // absolute url provided: remove "https?://doma.in" from path
+        path = path.replace(/https?:\/\/.+?\//, '/');
+    }
+
+    if (path[0] === '/' && path.indexOf(base) !== 0) {
         path = base + path;
     }
     var i = path.indexOf('?');
