@@ -489,13 +489,11 @@ function Request(path, state, customData) {
     }
     var i = path.indexOf('?');
 
-    //this.canonicalPath = path;
-    this.path = path.replace(base, '') || '/';
-
     this.title = document.title;
     this.state = state || {};
     this.querystring = ~i ? decodeURLEncodedURIComponent(path.slice(i + 1)) : '';
     this.pathname = decodeURLEncodedURIComponent(~i ? path.slice(0, i) : path);
+    this.path = this.pathname.replace(base, '') || '/';
     this.params = {};
     this.customData = (customData && (typeof customData === 'object')) ? customData : {};
     if (!this.customData.env || typeof this.customData.env !== 'object') {
@@ -515,12 +513,12 @@ function Request(path, state, customData) {
 
     // fragment
     this.hash = '';
-    if (~this.path.indexOf('#')) {
-        var parts = this.path.split('#');
-        this.path = parts[0];
+    if (~this.originalPath.indexOf('#')) {
+        var parts = this.originalPath.split('#');
         this.hash = decodeURLEncodedURIComponent(parts[1]) || '';
-        this.querystring = this.querystring.split('#')[0];
-        this.pathname = this.pathname.split('#')[0];
+        this.querystring = this.querystring.split('#', 2)[0];
+        this.path = this.path.split('#', 2)[0];
+        this.pathname = this.pathname.split('#', 2)[0];
         if (this.hash[0] === '!') {
             this.subRequest = new Request(this.hash.slice(1));
             this.subRequest.parentRequest = this;
