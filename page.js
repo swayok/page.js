@@ -372,7 +372,7 @@ page.reload = function () {
     if (!currentRequest || !currentRequest.path) {
         throw new Error('Attempt to reload page before router has dispatched at least one page')
     }
-    page.show(currentRequest.fullUrl(), currentRequest.state, true, true, {env: {is_reload: true}});
+    page.show(document.location.href, undefined, true, true, {env: {is_reload: true}});
 };
 
 /**
@@ -531,6 +531,13 @@ function Request(path, state, customData) {
     }
 
 }
+
+/**
+ * Reload page using url and state of this request
+ */
+Request.prototype.reload = function () {
+    page.show(currentRequest.fullUrl(), currentRequest.state, true, true, {env: {is_reload: true}});
+};
 
 /**
  * Compare paths and query strings of 2 requests
