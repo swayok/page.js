@@ -708,8 +708,8 @@ Request.prototype.dispatch = function () {
     var request = this;
     var deferred = Deferred();
     var promise = deferred.promise();
-    var currentRequestBackup = currentRequest;
-    var prevRequestBackup = previousRequest;
+    var currentRequestBackup = currentRequest && currentRequest.clone ? currentRequest.clone() : currentRequest;
+    var prevRequestBackup = previousRequest && previousRequest.colne ? previousRequest.clone() : previousRequest;
 
     currentRequest.promise.always(function () {
         previousRequest = currentRequest;
@@ -795,6 +795,14 @@ Request.prototype.dispatch = function () {
         });
 
     return promise;
+};
+
+/**
+ * Clone this Request
+ * @return {Request}
+ */
+Request.prototype.clone = function () {
+    return new Request(this.fullUrl(), $.extend(true, {}, this.state), $.extend(true, {}, this.customData));
 };
 
 /**
