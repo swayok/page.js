@@ -326,7 +326,7 @@ function getDocumentUrl(withHashbang) {
  * @param {string} path
  * @param {Object=} state
  * @param {boolean=} dispatch
- * @param {boolean=} push
+ * @param {boolean=} push - not used anymore
  * @param {Object=} customData
  * @return {!Request}
  * @api public
@@ -334,7 +334,7 @@ function getDocumentUrl(withHashbang) {
 page.show = function (path, state, dispatch, push, customData) {
     checkIfStarted();
     var request = new Request(path, state, customData);
-    processRequest(request, dispatch, push);
+    processRequest(request, dispatch/*, push*/);
     return request;
 };
 
@@ -387,7 +387,7 @@ page.reload = function () {
  */
 page.replace = function (path, state, dispatch, customData) {
     var request = new Request(path, state, customData);
-    request.push = false; //< it does not change url
+    //request.push = false; //< it does not change url
     currentRequest.promise.always(function () {
         request.saveState();
     });
@@ -402,15 +402,15 @@ page.replace = function (path, state, dispatch, customData) {
  *
  * @param {Request=} request
  * @param {boolean=} dispatch
- * @param {boolean=} push
+ * //@param {boolean=} push
  * @api public
  */
-page.restoreRequest = function (request, dispatch, push) {
+page.restoreRequest = function (request, dispatch/*, push*/) {
     if (request.customData) {
         request.customData.env = {};
     }
     request.customData.env.is_restore = true;
-    processRequest(request, dispatch, push);
+    processRequest(request, dispatch/*, push*/);
 };
 
 /**
@@ -418,16 +418,16 @@ page.restoreRequest = function (request, dispatch, push) {
  *
  * @param {Request=} request
  * @param {boolean=} dispatch
- * @param {boolean=} push
+ * //@param {boolean=} push
  * @api private
  */
-function processRequest(request, dispatch, push) {
-    if (push === false) {
-        request.push = false;
-    }
+function processRequest(request, dispatch/*, push*/) {
+    // if (push === false) {
+    //     request.push = false;
+    // }
     if (dispatch !== false) {
         request.dispatch();
-    } else if (request.push) {
+    } else /*if (request.push)*/ {
         request.pushState();
     }
 }
@@ -502,7 +502,7 @@ function Request(path, state, customData) {
 
     this.promise = null;
 
-    this.push = true;
+    //this.push = true;
     this.routeFound = false;
     this.routeNotFoundHandled = false;
     this.error = false;
@@ -672,9 +672,9 @@ Request.prototype.restoreParentRequest = function (dispatch) {
     if (this.isSubRequest() && currentRequest.hasSubRequest() && currentRequest.isSameAs(this.parentRequest)) {
         this.parentRequest.removeSubRequest();
         if (dispatch === false) {
-            if (this.parentRequest.push) {
+            //if (this.parentRequest.push) {
                 this.parentRequest.pushState();
-            }
+            //}
         } else {
             this.parentRequest.customData.env.is_restore = true;
             this.parentRequest.dispatch();
@@ -697,6 +697,7 @@ Request.prototype.setSubRequest = function (request) {
  */
 Request.prototype.removeSubRequest = function () {
     this.subRequest = null;
+    //this.push = true;
 };
 /**
  * Dispatch the given `request`.
@@ -737,9 +738,9 @@ Request.prototype.dispatch = function () {
         (request.promise = promise)
             .done(function () {
                 if (request.routeFound) {
-                    if (request.push) {
+                    // if (request.push) {
                         request.pushState();
-                    }
+                    // }
                     delete currentRequest.customData.env.is_restore; //< not needed anymore
                     if (request.hasSubRequest()) {
                         var prevRequest = previousRequest;
