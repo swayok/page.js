@@ -709,7 +709,7 @@ Request.prototype.dispatch = function () {
     var deferred = Deferred();
     var promise = deferred.promise();
     var currentRequestBackup = currentRequest && currentRequest.clone ? currentRequest.clone() : currentRequest;
-    var prevRequestBackup = previousRequest && previousRequest.colne ? previousRequest.clone() : previousRequest;
+    var prevRequestBackup = previousRequest && previousRequest.clone ? previousRequest.clone() : previousRequest;
 
     currentRequest.promise.always(function () {
         previousRequest = currentRequest;
