@@ -707,9 +707,9 @@ Request.prototype.removeSubRequest = function () {
 Request.prototype.dispatch = function () {
     var request = this;
     var deferred = Deferred();
-    var promise = deferred.promise();
-    var currentRequestBackup = currentRequest && currentRequest.clone ? currentRequest.clone() : currentRequest;
-    var prevRequestBackup = previousRequest && previousRequest.clone ? previousRequest.clone() : previousRequest;
+    request.promise = deferred.promise();
+    var currentRequestBackup = currentRequest && currentRequest.backup ? currentRequest.backup() : currentRequest;
+    var prevRequestBackup = previousRequest && previousRequest.backup ? previousRequest.backup() : previousRequest;
 
     currentRequest.promise.always(function () {
         previousRequest = currentRequest;
@@ -735,13 +735,13 @@ Request.prototype.dispatch = function () {
                 deferred.reject.apply(deferred, arguments);
             });
 
-        (request.promise = promise)
+        request.promise
             .done(function () {
                 if (request.routeFound) {
                     // if (request.push) {
                         request.pushState();
                     // }
-                    delete currentRequest.customData.env.is_restore; //< not needed anymore
+                    delete request.customData.env.is_restore; //< not needed anymore
                     if (request.hasSubRequest()) {
                         var prevRequest = previousRequest;
                         setTimeout(function () {
@@ -760,6 +760,7 @@ Request.prototype.dispatch = function () {
                         .done(function () {
                             if (!request.routeNotFoundHandled) {
                                 routeNotFound(request);
+                                request.routeNotFoundHandled = true;
                             }
                         });
                 }
@@ -769,22 +770,22 @@ Request.prototype.dispatch = function () {
                     .queue(errorHandlers, request, [request])
                     .done(function () {
                         if (!request.errorHandled) {
-                            console.error('Error occured while handling a request', request, error);
-                            if (error instanceof Error) {
-                                throw error;
-                            } else {
-                                throw new Error('Error occured while handling a request');
-                            }
+                            request.errorHandled = true;
+                            console.error('Error occured while handling a request to ' + request.originalPath);
+                            console.groupCollapsed('Error details');
+                            console.warn('request', request);
+                            console.warn('request error', error);
+                            console.groupEnd();
                         }
                     })
                     .fail(function () {
-                        console.error('Error occured while handling a request', request, error);
-                        console.error('Error occured while handling a request error', arguments);
-                        if (error instanceof Error) {
-                            throw error;
-                        } else {
-                            throw new Error('Error occured while handling a request and inside error handler');
-                        }
+                        console.error('Error occured while handling a request and error' + request.originalPath);
+                        console.groupCollapsed('Error details');
+                        console.warn('request', request);
+                        console.warn('request error', error);
+                        console.warn('error handler fail info:', arguments);
+                        console.groupEnd();
+                        request.errorHandled = true;
                     })
                     .always(function () {
                         // restore previous state of requests
@@ -794,7 +795,7 @@ Request.prototype.dispatch = function () {
             });
         });
 
-    return promise;
+    return request.promise;
 };
 
 /**
@@ -803,6 +804,16 @@ Request.prototype.dispatch = function () {
  */
 Request.prototype.clone = function () {
     return new Request(this.fullUrl(), $.extend(true, {}, this.state), $.extend(true, {}, this.customData));
+};
+
+/**
+ * Clone this Request preserving promise
+ * @return {Request}
+ */
+Request.prototype.backup = function () {
+    var request = this.clone();
+    request.promise = this.promise;
+    return request;
 };
 
 /**
