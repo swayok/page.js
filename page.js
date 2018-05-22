@@ -707,11 +707,15 @@ Request.prototype.removeSubRequest = function () {
 Request.prototype.dispatch = function () {
     var request = this;
     var deferred = Deferred();
-    request.promise = deferred.promise();
     var currentRequestBackup = currentRequest && currentRequest.backup ? currentRequest.backup() : currentRequest;
     var prevRequestBackup = previousRequest && previousRequest.backup ? previousRequest.backup() : previousRequest;
 
-    currentRequest.promise.always(function () {
+    // note: currentRequest may potentially be same as request wuth same 'promise' property
+    // so to avoid deadlocking we need to store currentRequest.promise into variable before setting new request.promise
+    var currentPromise = currentRequest.promise;
+    request.promise = deferred.promise();
+
+    currentPromise.always(function () {
         previousRequest = currentRequest;
         currentRequest = request;
 
